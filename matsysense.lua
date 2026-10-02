@@ -1,7 +1,26 @@
 -- ==============================================================================
--- Matsysense Supreme Edition (Roblox Studio Native Port)
--- Enterprise Monolith Architecture - Complete Bug-Fixed Core
+-- СПИСОК ГЛАВНЫХ ИСПРАВЛЕНИЙ (revision 2)
+--  1. Вращение (Spin) не работало на R15: мотор "Root" лежит в LowerTorso, а не в HumanoidRootPart.
+--  2. IsTeammate считал ВСЕХ своими в играх без команд (одинаковый TeamColor) -> наводка/триггер молчали.
+--  3. Бинд-клавиша: "условие and nil or x" всегда давала x -> Backspace/Delete/Escape не снимали бинд.
+--  4. Метеориты: Y игрока прибавлялся дважды, деталь не была Anchored.
+--  5. Туман/облака/темнота/Ambient/частицы: теперь запоминаются и ВОЗВРАЩАЮТСЯ, чужие Atmosphere не ломаются.
+--  6. Noclip возвращал CanCollide=true ВСЕМ деталям (шапки становились твёрдыми) -> теперь исходные значения.
+--  7. Внешний вид персонажа красился каждый кадр -> теперь только при включении и с возвратом.
+--  8. Защита от АФК и "Гасить толчки" были пустыми переключателями -> реализованы.
+--  9. Триггер стрелял дважды (Tool + VirtualUser), TriggerWallCheck не работал.
+-- 10. Конфиг сохранял служебные значения (MenuOpen, Orig*), а загрузка сама включала туман.
+-- 11. Выпадающие списки перекрывались карточками (ZIndexBehavior), быстрое открытие меню прятало его.
+-- 12. Утечки: незакрытые соединения, кэши без weak-ключей, повторное создание шапки на каждый тик слайдера.
 -- ==============================================================================
+
+-- ==============================================================================
+-- Matsysense Supreme Edition (Roblox Studio Native Port)
+-- Enterprise Monolith Architecture - Bug-Fixed Core (revision 2)
+-- ==============================================================================
+
+-- Поставьте true, чтобы при запуске в Output выполнились встроенные модульные тесты (см. M.RunSelfTests внизу файла)
+local RUN_SELF_TESTS = false
 
 local M = {}
 
@@ -15,7 +34,8 @@ M.Services = {
     D = game:GetService("Debris"),
     S = game:GetService("Stats"),
     G = game:GetService("GuiService"),
-    V = game:GetService("VirtualUser")
+    V = game:GetService("VirtualUser"),
+    C = game:GetService("ContentProvider")
 }
 
 M.LP = M.Services.P.LocalPlayer
@@ -71,6 +91,7 @@ M.L10N = {
         Sec_WorldClouds = {RU = "Настройка облаков", EN = "Cloud Settings"},
         Sec_WorldWeather = {RU = "Эффекты погоды", EN = "Weather Effects"},
         Sec_WorldEffects = {RU = "Дополнительные эффекты", EN = "Additional Effects"},
+        Sec_WorldSky = {RU = "Свой скайбокс (небо)", EN = "Custom Skybox"},
         Sec_PlyrModel = {RU = "Внешний вид модели", EN = "Model Appearance"},
         Sec_PlyrJump = {RU = "Следы от прыжка", EN = "Jump Trails"},
         Sec_PlyrAccessories = {RU = "Сферы вокруг тела", EN = "Body Spheres"},
@@ -96,7 +117,7 @@ M.L10N = {
         TriggerWallCheck = {RU = "Не стрелять через стены", EN = "Check Obstacles"},
 
         Levitation = {RU = "Режим полета", EN = "Flight Mode"},
-        ImpulseStutters = {RU = "Резкие рывки", EN = "Anti-Hit Stutters"},
+        ImpulseStutters = {RU = "Гасить сильные толчки", EN = "Anti-Knockback"},
         MovementVelocity = {RU = "Ускорение бега", EN = "Sprint Boost"},
         AirVectoring = {RU = "Управление в прыжке", EN = "Mid-air Control"},
         AirSpeed = {RU = "Скорость в воздухе", EN = "Mid-air Speed"},
@@ -146,6 +167,24 @@ M.L10N = {
         CloudDensity = {RU = "Густота облаков", EN = "Cloud Density"},
         CloudCover = {RU = "Заполнение неба (%)", EN = "Sky Coverage (%)"},
         CloudColor = {RU = "Цвет облаков", EN = "Cloud Color"},
+        SkyOn = {RU = "Включить свой скайбокс", EN = "Enable Custom Skybox"},
+        SkyIds = {RU = "ID скайбокса", EN = "Skybox ID"},
+        SkyHideBodies = {RU = "Скрыть солнце, луну и звёзды", EN = "Hide Sun, Moon & Stars"},
+        SkyPlaceholder = {
+            RU = "Формат: 1234567890 или rbxassetid://1234567890\n6 граней через запятую: Bk, Dn, Ft, Lf, Rt, Up",
+            EN = "Format: 1234567890 or rbxassetid://1234567890\n6 faces, comma-separated: Bk, Dn, Ft, Lf, Rt, Up"
+        },
+        Sky_Idle = {RU = "Введите ID картинки и нажмите Enter", EN = "Enter an image ID and press Enter"},
+        Sky_Off = {RU = "Скайбокс выключен", EN = "Skybox is off"},
+        Sky_Loading = {RU = "Загрузка текстур...", EN = "Loading textures..."},
+        Sky_Ok1 = {RU = "Применено: один ID на все 6 граней", EN = "Applied: one ID on all 6 faces"},
+        Sky_Ok6 = {RU = "Применено: 6 граней", EN = "Applied: 6 faces"},
+        Sky_BadCount = {RU = "Ошибка: нужен 1 ID или 6 ID, а введено: %d", EN = "Error: need 1 or 6 IDs, got: %d"},
+        Sky_BadId = {RU = "Ошибка: «%s» не похоже на ID (нужно от 5 до 19 цифр)", EN = "Error: \"%s\" is not an ID (5 to 19 digits needed)"},
+        Sky_Fail = {
+            RU = "Не загрузилось текстур: %d. Нужен ID именно картинки (Image), и она должна быть доступна этому месту",
+            EN = "Textures failed to load: %d. Use an Image asset ID that this place is allowed to use"
+        },
 
         PropWeather = {RU = "Включить осадки на карте", EN = "Enable Precipitation"},
         WeatherMode = {RU = "Тип осадков", EN = "Precipitation Type"},
@@ -166,7 +205,7 @@ M.L10N = {
         MetDur = {RU = "Время полета", EN = "Flight Time"},
         MetCol = {RU = "Цвет звезд", EN = "Star Color"},
 
-        HideHats = {RU = "Скрыть чужие шапки", EN = "Hide Hats"},
+        HideHats = {RU = "Скрыть шапки у игроков", EN = "Hide Hats"},
         HoloSelf = {RU = "Голограмма на своем персонаже", EN = "Self Hologram"},
         HoloAlpha = {RU = "Прозрачность персонажа", EN = "Transparency"},
         HoloCol = {RU = "Цвет голограммы", EN = "Hologram Color"},
@@ -250,7 +289,7 @@ M.Tooltips = {
     YawSpeed = "Плавная регулировка скорости вращения персонажа.",
     JitterSpin = "Резкие случайные рывки при вращении.",
     PitchMod = "Наклон модели по вертикали.",
-    PacketChoke = "Имитация скачков задержки.",
+    PacketChoke = "Только визуально: меняет частоту теней и показ пинга. На сервер ничего не отправляется.",
     BacktrackShadows = "Следы прошлых координат персонажа.",
     AirVectoring = "Управление траекторией в падении.",
     EnableEsp = "Подсветка сущностей.",
@@ -258,7 +297,16 @@ M.Tooltips = {
     ThirdPerson = "Фиксированный вид от третьего лица.",
     CloudsOn = "Включение объемных облаков в небе.",
     FpsBoost = "Превращает карту в гладкий пластик без лишних текстур.",
-    FpsUnlocker = "Снимает стандартный лимит кадров Roblox."
+    FpsUnlocker = "Снимает лимит кадров Roblox (работает только в среде с функцией setfpscap).",
+    HideHats = "Прячет шапки и аксессуары на головах у всех игроков (только на вашем экране).",
+    HoloSelf = "Делает вашего персонажа полупрозрачной голограммой.",
+    ImpulseStutters = "Гасит очень сильные толчки, чтобы персонажа не швыряло от отбрасывания.",
+    AimWallCheck = "Не целиться в игроков, которые закрыты стеной.",
+    TriggerWallCheck = "Если включено, выстрел не произойдёт, пока цель закрыта стеной.",
+    AimTeamCheck = "Не целиться в игроков из вашей команды.",
+    SkyOn = "Заменяет небо на ваши картинки. Время суток на скайбокс не влияет: небо остаётся тем же днём и ночью.",
+    SkyIds = "Один ID картинки на все грани или шесть ID через запятую в порядке Bk, Dn, Ft, Lf, Rt, Up (зад, низ, перед, лево, право, верх).",
+    SkyHideBodies = "Солнце, луна и звёзды привязаны ко времени суток и рисуются поверх неба. Выключите их, чтобы свой скайбокс выглядел одинаково в любое время."
 }
 
 M.State = {
@@ -270,7 +318,7 @@ M.State = {
 
     Levitation = false, PhaseCollision = false, Esp = false, EspOnSelf = false, EspTeamCheck = false, Speed = false, AirVault = false, NetworkAlive = false, StateForce = false,
     KinematicBoost = 55, SprintSpeed = 45,
-    ImpulseStutters = true,
+    ImpulseStutters = false,
     AirVectoring = false, AirSpeed = 150, AirAccel = 8,
 
     CamFov = 70, ThirdPerson = false, ThirdPersonDist = 12,
@@ -324,6 +372,10 @@ M.State = {
     CloudDensity = 0.7,
     CloudCover = 60,
     CloudColor = Color3.fromRGB(255, 255, 255),
+
+    SkyOn = false,
+    SkyIds = "",
+    SkyHideBodies = true,
 
     WeatherOn = false, WeatherMode = "Rain", WeatherDensity = 35, WeatherSpeed = 60, WeatherRadius = 60,
     WeatherColor = Color3.fromRGB(180, 230, 255), SnowSize = 0.5,
@@ -391,13 +443,125 @@ M.Data = {
     HoverCard = nil,
     HoverTask = nil,
     MemStorage = {},
-    TextureCache = {},
-    OriginalMaterials = {}
+    -- Кэши с "слабыми" ключами: когда деталь удалена из игры, запись исчезает сама (нет утечки памяти)
+    TextureCache = setmetatable({}, {__mode = "k"}),
+    OriginalMaterials = setmetatable({}, {__mode = "k"}),
+    EmitterCache = setmetatable({}, {__mode = "k"}),
+    NoclipOrig = setmetatable({}, {__mode = "k"}),
+    VisualOrig = setmetatable({}, {__mode = "k"}),
+
+    -- Что было в игре до наших изменений (чтобы красиво вернуть при выключении)
+    AtmoBackup = {},
+    CloudBackup = nil,
+    OrigCameraMode = nil,
+    FovForced = false,
+    Importing = false,
+    MenuToken = 0,
+    OrigAmbient = nil,
+    OrigGlobalShadows = nil,
+    OrigFov = 70,
+    OrigZoomMin = 0.5,
+    OrigZoomMax = 128,
+
+    -- Флаги "мы это сейчас применяем", чтобы восстанавливать ровно один раз
+    FogApplied = false,
+    DarkApplied = false,
+    PitchDirty = false,
+    SpinDirty = false,
+    StateForceApplied = false,
+    TPApplied = false,
+    HatsHidden = false,
+    HoloApplied = false,
+
+    AfkConn = nil,
+    LastVisual = 0,
+    FpsBoostToken = 0,
+    FpsBoostConn = nil,
+    FpsWarned = false,
+    OwnFolderSet = {},
+    Debounce = {},
+
+    -- Свой скайбокс
+    SkyFaces = {"SkyboxBk", "SkyboxDn", "SkyboxFt", "SkyboxLf", "SkyboxRt", "SkyboxUp"},
+    SkyBackup = nil,   -- что было у Sky игры до нас
+    SkyWanted = nil,   -- последние корректно разобранные 6 граней
+    SkyOkKey = "Sky_Ok1",
+    SkyToken = 0,
+    LastSkyCheck = 0,
+    SkyStatus = nil
 }
 
 M.UI = { Esp2DParts = {} }
 M.CFG = {}
 M.F = {}
+
+-- ==============================================================================
+-- [ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ]
+-- ==============================================================================
+
+-- Запоминаем соединение, чтобы Uninject смог его отключить
+function M.Track(conn)
+    table.insert(M.Data.Conns, conn)
+    return conn
+end
+
+-- Откладывает вызов fn. Если за delay секунд функцию вызвали снова с тем же key,
+-- сработает только последний вызов. Нужно, чтобы слайдеры не пересоздавали объекты на каждый пиксель.
+function M.F.Debounce(key, delay, fn)
+    local token = (M.Data.Debounce[key] or 0) + 1
+    M.Data.Debounce[key] = token
+    task.delay(delay, function()
+        if M.Data.Debounce[key] == token and not M.State.IsUninjected then
+            fn()
+        end
+    end)
+end
+
+-- Короткая запись: M.Conn(сигнал, функция) подключает событие и запоминает соединение
+function M.Conn(signal, fn)
+    return M.Track(signal:Connect(fn))
+end
+
+-- Поднимаемся от детали вверх, пока не найдём модель с Humanoid (это и есть персонаж)
+function M.GetCharacterFromPart(part)
+    local current = part
+    while current and current ~= workspace do
+        if current:IsA("Model") and current:FindFirstChildOfClass("Humanoid") then
+            return current
+        end
+        current = current.Parent
+    end
+    return nil
+end
+
+-- Принадлежит ли объект нашим папкам (эффекты скрипта)
+function M.IsOwned(obj)
+    local current = obj
+    while current and current ~= workspace do
+        if M.Data.OwnFolderSet[current] then return true end
+        current = current.Parent
+    end
+    return false
+end
+
+-- string:upper() не знает кириллицу, поэтому делаем свою версию
+function M.Upper(str)
+    local ok, result = pcall(function()
+        local out = {}
+        for _, cp in utf8.codes(str) do
+            if cp >= 0x430 and cp <= 0x44F then
+                cp = cp - 32
+            elseif cp == 0x451 then
+                cp = 0x401
+            elseif cp >= 97 and cp <= 122 then
+                cp = cp - 32
+            end
+            table.insert(out, utf8.char(cp))
+        end
+        return table.concat(out)
+    end)
+    return ok and result or str:upper()
+end
 
 M.State.OrigExp = M.Services.L.ExposureCompensation or 0
 M.State.OrigFogStart = M.Services.L.FogStart or 0
@@ -405,6 +569,17 @@ M.State.OrigFogEnd = M.Services.L.FogEnd or 100000
 M.State.OrigFogColor = M.Services.L.FogColor or Color3.new(0.8, 0.8, 0.8)
 M.State.OrigOutdoorAmb = M.Services.L.OutdoorAmbient or Color3.fromRGB(128, 128, 128)
 M.State.OrigTime = M.Services.L.ClockTime or 14
+M.Data.OrigAmbient = M.Services.L.Ambient
+M.Data.OrigGlobalShadows = M.Services.L.GlobalShadows
+
+do
+    -- Раньше скрипт сразу насильно ставил FOV 70. Теперь стартуем с FOV, который реально в игре
+    local cam0 = workspace.CurrentCamera
+    if cam0 then
+        M.Data.OrigFov = cam0.FieldOfView
+        M.State.CamFov = math.clamp(math.round(cam0.FieldOfView), 30, 120)
+    end
+end
 
 function M.Translate(key)
     local item = M.L10N.Dict[key]
@@ -415,9 +590,11 @@ end
 function M.IsTeammate(p)
     if not p then return false end
     if p == M.LP then return true end
-    if M.LP.Team and p.Team and M.LP.Team == p.Team then return true end
-    if M.LP.TeamColor and p.TeamColor and M.LP.TeamColor == p.TeamColor then return true end
-    return false
+    -- В играх без команд у всех игроков одинаковый TeamColor (белый), и старая проверка
+    -- по цвету делала ВСЕХ "своими". Поэтому смотрим на команду, только если игроки в ней реально состоят.
+    if M.LP.Neutral or p.Neutral then return false end
+    local myTeam, hisTeam = M.LP.Team, p.Team
+    return myTeam ~= nil and myTeam == hisTeam
 end
 
 function M.UpdateRaycast()
@@ -446,6 +623,9 @@ M.UI.vFolder = Instance.new("Folder", workspace); M.UI.vFolder.Name = "Matsysens
 M.UI.cCache = Instance.new("Folder", workspace); M.UI.cCache.Name = "MatsysenseClothCache"
 M.UI.gFolder = Instance.new("Folder", workspace); M.UI.gFolder.Name = "MatsysenseGhostCache"
 M.UI.jFolder = Instance.new("Folder", workspace); M.UI.jFolder.Name = "MatsysenseJumpRings"
+for _, folder in ipairs({M.UI.wFolder, M.UI.kFolder, M.UI.lFolder, M.UI.mFolder, M.UI.vFolder, M.UI.cCache, M.UI.gFolder, M.UI.jFolder}) do
+    M.Data.OwnFolderSet[folder] = true
+end
 M.UpdateRaycast()
 
 function M.CacheJoints(char)
@@ -548,7 +728,7 @@ function M.SpawnJumpRing(originPos)
 
     local upVec = (math.abs(hitNorm.Y) > 0.95) and Vector3.new(0, 0, 1) or Vector3.new(0, 1, 0)
     local rightVec = hitNorm:Cross(upVec).Unit
-    local flatCFrame = CFrame.fromMatrix(hitPos + (hitNorm * 0.04), hitNorm, rightVec, rightVec:Cross(hitNorm).Unit)
+    local flatCFrame = CFrame.fromMatrix(hitPos + (hitNorm * 0.04), hitNorm, rightVec)
 
     if M.State.JumpRingType == "Filled" or M.State.JumpRingType == "Both" then
         local fillPart = Instance.new("Part")
@@ -628,7 +808,7 @@ function M.BindAntiRagdoll(char)
         if newState == Enum.HumanoidStateType.Jumping and M.State.JumpRings then
             M.SpawnJumpRing(r.Position)
         end
-        if M.State.StateForce and not M.State.IsDead then
+        if M.State.StateForce and not M.State.IsDead and not M.State.Levitation then
             if newState == Enum.HumanoidStateType.Ragdoll or newState == Enum.HumanoidStateType.FallingDown or newState == Enum.HumanoidStateType.Physics or newState == Enum.HumanoidStateType.PlatformStanding then
                 h:ChangeState(Enum.HumanoidStateType.GettingUp)
                 r.AssemblyLinearVelocity = Vector3.zero
@@ -652,87 +832,149 @@ function M.BindAntiRagdoll(char)
     end))
 end
 
+function M.F.ApplyHolo(char)
+    if M.State.HoloSelf then
+        M.Data.HoloApplied = true
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and M.Data.ValidLimbs[part.Name] and not part:FindFirstAncestorOfClass("Accessory") then
+                if not M.Data.VisualOrig[part] then
+                    M.Data.VisualOrig[part] = {Material = part.Material, Color = part.Color, Transparency = part.Transparency}
+                end
+                if part.Material ~= Enum.Material.ForceField then part.Material = Enum.Material.ForceField end
+                if part.Color ~= M.State.HoloColor then part.Color = M.State.HoloColor end
+                if part.Transparency ~= M.State.HoloAlpha then part.Transparency = M.State.HoloAlpha end
+            end
+        end
+    elseif M.Data.HoloApplied then
+        M.Data.HoloApplied = false
+        for part, orig in pairs(M.Data.VisualOrig) do
+            if part.Parent then
+                part.Material = orig.Material
+                part.Color = orig.Color
+                part.Transparency = orig.Transparency
+            end
+        end
+        table.clear(M.Data.VisualOrig)
+    end
+end
+
+function M.F.ApplyHats()
+    local function setAll(value)
+        for _, plr in ipairs(M.Services.P:GetPlayers()) do
+            local ch = plr.Character
+            if ch then
+                for _, item in ipairs(ch:GetChildren()) do
+                    if item:IsA("Accessory") then
+                        local handle = item:FindFirstChild("Handle")
+                        if handle and handle:IsA("BasePart") then
+                            handle.LocalTransparencyModifier = value
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if M.State.HideHats then
+        M.Data.HatsHidden = true
+        setAll(1)
+    elseif M.Data.HatsHidden then
+        M.Data.HatsHidden = false
+        setAll(0)
+    end
+end
+
+-- Раньше эта функция КАЖДЫЙ кадр насильно красила и делала видимым весь персонаж,
+-- ломая игры с невидимостью. Теперь она трогает только то, что включил пользователь,
+-- и один раз возвращает всё как было, когда функцию выключают.
 function M.UpdatePlayerVisuals()
     local char = M.LP and M.LP.Character
-    if not char or not char.Parent then return end
-    local head = char:FindFirstChild("Head")
-    local cam = workspace.CurrentCamera
-    local is1st = (head and cam and (cam.CFrame.Position - head.Position).Magnitude < 1.4)
-
-    for _, item in ipairs(char:GetChildren()) do
-        if item:IsA("Accessory") then
-            local handle = item:FindFirstChild("Handle")
-            if handle then
-                handle.LocalTransparencyModifier = (is1st or M.State.HideHats) and 1 or 0
-            end
-        end
+    if char and char.Parent then
+        M.F.ApplyHolo(char)
     end
-
-    for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") then
-            if M.Data.ValidLimbs[part.Name] then
-                if M.State.HoloSelf then
-                    part.Material = Enum.Material.ForceField
-                    part.Color = M.State.HoloColor
-                    part.Transparency = is1st and 1 or M.State.HoloAlpha
-                else
-                    part.Material = Enum.Material.SmoothPlastic
-                    part.Transparency = is1st and 1 or 0
-                end
-            elseif part.Name == "HumanoidRootPart" or part.Name:lower():find("root") or part.Name:lower():find("hitbox") then
-                part.Transparency = 1
-            end
-        end
-    end
+    M.F.ApplyHats()
 end
 
 function M.ApplyFpsBoost(enabled)
     M.State.FpsBoost = enabled
+    M.Data.FpsBoostToken = M.Data.FpsBoostToken + 1
+    local token = M.Data.FpsBoostToken
+
+    if M.Data.FpsBoostConn then
+        M.Data.FpsBoostConn:Disconnect()
+        M.Data.FpsBoostConn = nil
+    end
+
+    local function boost(obj)
+        if obj:IsA("Terrain") then return end
+        if obj:IsA("BasePart") then
+            if M.Data.OriginalMaterials[obj] == nil then
+                M.Data.OriginalMaterials[obj] = obj.Material
+            end
+            obj.Material = Enum.Material.SmoothPlastic
+        elseif obj:IsA("Decal") or obj:IsA("Texture") then
+            if M.Data.TextureCache[obj] == nil then
+                M.Data.TextureCache[obj] = obj.Transparency
+            end
+            obj.Transparency = 1
+        elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Smoke") or obj:IsA("Fire") then
+            if M.Data.EmitterCache[obj] == nil then
+                M.Data.EmitterCache[obj] = obj.Enabled
+            end
+            obj.Enabled = false
+        end
+    end
+
     if enabled then
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("BasePart") then
-                if not M.Data.OriginalMaterials[obj] then
-                    M.Data.OriginalMaterials[obj] = obj.Material
+        M.Services.L.GlobalShadows = false
+        -- Новые объекты, появившиеся уже после включения, тоже упрощаем
+        M.Data.FpsBoostConn = workspace.DescendantAdded:Connect(function(obj)
+            if not M.IsOwned(obj) then boost(obj) end
+        end)
+
+        -- Идём по карте кусками, чтобы игра не зависала на больших картах
+        local processed = 0
+        for _, child in ipairs(workspace:GetChildren()) do
+            if not M.Data.OwnFolderSet[child] then
+                boost(child)
+                for _, obj in ipairs(child:GetDescendants()) do
+                    boost(obj)
+                    processed = processed + 1
+                    if processed % 1500 == 0 then
+                        task.wait()
+                        if token ~= M.Data.FpsBoostToken then return end
+                    end
                 end
-                obj.Material = Enum.Material.SmoothPlastic
-            elseif obj:IsA("Decal") or obj:IsA("Texture") then
-                if not M.Data.TextureCache[obj] then
-                    M.Data.TextureCache[obj] = obj.Transparency
-                end
-                obj.Transparency = 1
-            elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Smoke") or obj:IsA("Fire") then
-                obj.Enabled = false
             end
         end
-        M.Services.L.GlobalShadows = false
     else
         for obj, mat in pairs(M.Data.OriginalMaterials) do
-            if obj and obj.Parent then
-                obj.Material = mat
-            end
+            if obj.Parent then obj.Material = mat end
         end
         for obj, trans in pairs(M.Data.TextureCache) do
-            if obj and obj.Parent then
-                obj.Transparency = trans
-            end
+            if obj.Parent then obj.Transparency = trans end
+        end
+        for obj, wasEnabled in pairs(M.Data.EmitterCache) do
+            if obj.Parent then obj.Enabled = wasEnabled end
         end
         table.clear(M.Data.OriginalMaterials)
         table.clear(M.Data.TextureCache)
-        M.Services.L.GlobalShadows = true
+        table.clear(M.Data.EmitterCache)
+        M.Services.L.GlobalShadows = M.Data.OrigGlobalShadows
     end
 end
 
 function M.ApplyFpsUnlocker(enabled)
     M.State.FpsUnlocker = enabled
-    pcall(function()
-        if setfpscap then
-            setfpscap(enabled and 9999 or 240)
-        elseif set_fps_cap then
-            set_fps_cap(enabled and 9999 or 240)
-        else
-            settings().Rendering.QualityLevel = enabled and Enum.QualityLevel.Level01 or Enum.QualityLevel.Automatic
-        end
-    end)
+    local capFn = setfpscap or set_fps_cap
+    if capFn then
+        pcall(capFn, enabled and 9999 or 60)
+    elseif enabled and not M.Data.FpsWarned then
+        -- В обычном Roblox Studio нельзя поменять лимит кадров из скрипта.
+        -- Раньше тут молча меняли качество графики, что вводило в заблуждение.
+        M.Data.FpsWarned = true
+        warn("[Matsysense] FPS Unlocker не работает: в этой среде нет функции setfpscap.")
+    end
 end
 
 function M.OnCharacterAdded(newChar)
@@ -740,7 +982,17 @@ function M.OnCharacterAdded(newChar)
     task.spawn(function()
         newChar:WaitForChild("HumanoidRootPart", 5)
         newChar:WaitForChild("Humanoid", 5)
+        if M.State.IsUninjected or M.LP.Character ~= newChar then return end
+
+        -- Новый персонаж = новые детали, поэтому "применено" сбрасываем
         M.State.OrigC0Cache = {}
+        table.clear(M.Data.NoclipOrig)
+        table.clear(M.Data.VisualOrig)
+        M.Data.PitchDirty = false
+        M.Data.SpinDirty = false
+        M.Data.StateForceApplied = false
+        M.Data.HoloApplied = false
+
         M.CacheJoints(newChar)
         M.BindAntiRagdoll(newChar)
         M.UpdateRaycast()
@@ -748,9 +1000,7 @@ function M.OnCharacterAdded(newChar)
         if M.State.OrbitOn then M.F.RebuildOrbits() end
         if M.State.HatOn then M.F.RebuildWireHat() end
         if M.State.PhaseCollision then M.F.SetNoclip(true) end
-    end)
-    newChar.DescendantAdded:Connect(function()
-        M.UpdateRaycast()
+        if M.State.Levitation then M.F.StartFlying() end
     end)
 end
 
@@ -802,17 +1052,130 @@ function M.GetClosestTarget()
     return bestTarget
 end
 
+local function IsAliveModel(model)
+    local hum = model and model:FindFirstChildOfClass("Humanoid")
+    return hum ~= nil and hum.Health > 0
+end
+
+-- Ищет цель под центром экрана.
+-- TriggerWallCheck включён: цель считается только если луч дошёл до неё без преград.
+-- Выключен: стены игнорируются (луч проверяется отдельно для каждого игрока).
+function M.GetTriggerTarget(cam)
+    local center = cam.ViewportSize / 2
+    local ray = cam:ViewportPointToRay(center.X, center.Y)
+    local direction = ray.Direction * 2000
+
+    if M.State.TriggerWallCheck then
+        local result = workspace:Raycast(ray.Origin, direction, M.RayParams)
+        local model = result and M.GetCharacterFromPart(result.Instance)
+        local owner = model and M.Services.P:GetPlayerFromCharacter(model)
+        if owner and owner ~= M.LP and IsAliveModel(model) and not (M.State.TriggerTeamCheck and M.IsTeammate(owner)) then
+            return model
+        end
+        return nil
+    end
+
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Include
+    for _, plr in ipairs(M.Services.P:GetPlayers()) do
+        local ch = plr.Character
+        if plr ~= M.LP and ch and IsAliveModel(ch) and not (M.State.TriggerTeamCheck and M.IsTeammate(plr)) then
+            params.FilterDescendantsInstances = {ch}
+            if workspace:Raycast(ray.Origin, direction, params) then
+                return ch
+            end
+        end
+    end
+    return nil
+end
+
+-- Один "выстрел": если в руках Tool - активируем его, иначе имитируем клик.
+-- Раньше делались ОБА действия сразу, и оружие стреляло дважды.
+function M.F.FireTrigger()
+    if M.State.TriggerDelay > 0 then task.wait(M.State.TriggerDelay) end
+    local char = M.LP and M.LP.Character
+    local tool = char and char:FindFirstChildOfClass("Tool")
+    if tool then
+        tool:Activate()
+    else
+        M.Services.V:Button1Down(Vector2.zero)
+        task.wait(0.02)
+        M.Services.V:Button1Up(Vector2.zero)
+    end
+    task.wait(0.06)
+end
+
+-- Защита от падений: состояния отключаем ОДИН раз и возвращаем, когда функцию выключили
+function M.F.UpdateStateForce()
+    local char = M.LP and M.LP.Character
+    local h = char and char:FindFirstChildOfClass("Humanoid")
+    local want = M.State.StateForce and h ~= nil and h.Health > 0
+    if want then
+        if not M.State.Levitation and h.PlatformStand then h.PlatformStand = false end
+        if not M.Data.StateForceApplied then
+            M.Data.StateForceApplied = true
+            h:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+            h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+        end
+    elseif M.Data.StateForceApplied then
+        M.Data.StateForceApplied = false
+        if h then
+            h:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+            h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
+        end
+    end
+end
+
+-- Вид от третьего лица: свои настройки камеры включаем один раз и возвращаем при выключении.
+-- Раньше лимиты зума перезаписывались КАЖДЫЙ кадр, даже когда функция была выключена.
+function M.F.UpdateThirdPerson(cam, hrp, h, active)
+    if active and hrp and h then
+        if not M.Data.TPApplied then
+            M.Data.TPApplied = true
+            M.Data.OrigCameraMode = M.LP.CameraMode
+            M.Data.OrigZoomMin = M.LP.CameraMinZoomDistance
+            M.Data.OrigZoomMax = M.LP.CameraMaxZoomDistance
+            M.LP.CameraMode = Enum.CameraMode.Classic
+        end
+        local dist = M.State.ThirdPersonDist
+        if M.LP.CameraMaxZoomDistance ~= dist or M.LP.CameraMinZoomDistance ~= dist then
+            M.LP.CameraMinZoomDistance = math.min(dist, M.LP.CameraMinZoomDistance)
+            M.LP.CameraMaxZoomDistance = dist
+            M.LP.CameraMinZoomDistance = dist
+        end
+        if not M.State.MenuOpen then
+            M.Services.U.MouseBehavior = Enum.MouseBehavior.LockCenter
+            if h.AutoRotate then h.AutoRotate = false end
+            local _, ry, _ = cam.CFrame:ToOrientation()
+            hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, ry, 0)
+        end
+    elseif M.Data.TPApplied then
+        M.Data.TPApplied = false
+        M.LP.CameraMinZoomDistance = M.Data.OrigZoomMin
+        M.LP.CameraMaxZoomDistance = M.Data.OrigZoomMax
+        if M.Data.OrigCameraMode then M.LP.CameraMode = M.Data.OrigCameraMode end
+        M.Services.U.MouseBehavior = Enum.MouseBehavior.Default
+        local char = M.LP.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.AutoRotate = true end
+    end
+end
+
 -- ==============================================================================
 -- [ CAMERA AIM-ASSIST & FOV PIPELINE ]
 -- ==============================================================================
+pcall(function() M.Services.R:UnbindFromRenderStep("MatsysenseCameraProcessor") end)
 M.Services.R:BindToRenderStep("MatsysenseCameraProcessor", Enum.RenderPriority.Camera.Value + 1, function(dt)
     if M.State.IsUninjected then return end
     local cam = workspace.CurrentCamera
     if not cam then return end
 
-    local targetFov = math.clamp(M.State.CamFov, 30, 120)
-    if cam.FieldOfView ~= targetFov then
-        cam.FieldOfView = targetFov
+    -- FOV насильно держим только если пользователь сам его менял (иначе не мешаем игре)
+    if M.Data.FovForced then
+        local targetFov = math.clamp(M.State.CamFov, 30, 120)
+        if cam.FieldOfView ~= targetFov then
+            cam.FieldOfView = targetFov
+        end
     end
 
     local char = M.LP and M.LP.Character
@@ -859,6 +1222,10 @@ function M.F.SetupEsp(p)
     local function initChar(char)
         if not char then return end
         local isSelf = (p == M.LP)
+
+        -- Ждём Humanoid ДО создания рамок: при быстром респавне старые рамки раньше "терялись"
+        local hum = char:WaitForChild("Humanoid", 10)
+        if p.Character ~= char or not p.Parent then return end
 
         if M.State.Highlights[p] and M.State.Highlights[p].Parent then 
             M.State.Highlights[p]:Destroy() 
@@ -936,7 +1303,6 @@ function M.F.SetupEsp(p)
         tracer.Visible = false
         tracer.Parent = M.UI.EspGui
 
-        local hum = char:WaitForChild("Humanoid", 10)
         M.State.EspGuis[p] = {
             Container = boxContainer,
             Stroke = bStroke,
@@ -947,7 +1313,8 @@ function M.F.SetupEsp(p)
             TracerLine = tracer,
             Char = char,
             Hum = hum,
-            IsSelf = isSelf
+            IsSelf = isSelf,
+            Player = p
         }
         M.F.UpdateEsp()
     end
@@ -1039,7 +1406,7 @@ function M.F.UpdateEsp()
         if pack and pack.Container then
             local isSelf = pack.IsSelf
             local allowed = M.State.Esp and (not isSelf or M.State.EspOnSelf)
-            if M.State.EspTeamCheck and M.IsTeammate(pack.Hum and pack.Hum.Parent and M.Services.P:GetPlayerFromCharacter(pack.Hum.Parent)) and not isSelf then allowed = false end
+            if M.State.EspTeamCheck and not isSelf and M.IsTeammate(pack.Player) then allowed = false end
             
             pack.Container.Visible = allowed and M.State.EspBox
             pack.Stroke.Color = M.State.EspBoxCol
@@ -1112,23 +1479,31 @@ function M.F.UpdateWeatherProps(dt)
         end
     end
 
-    local fallSpd = (M.State.WeatherMode == "Rain") and (M.State.WeatherSpeed * 2.0 + 60) or (M.State.WeatherSpeed * 0.6 + 8)
+    local isSnow = (M.State.WeatherMode == "Snow")
+    local fallSpd = isSnow and (M.State.WeatherSpeed * 0.6 + 8) or (M.State.WeatherSpeed * 2.0 + 60)
+    -- "Подпись" внешнего вида: пока она не изменилась, размер и цвет частиц заново не выставляем
+    local visualSig = table.concat({tostring(isSnow), M.State.SnowSize, M.State.WeatherColor:ToHex(), math.floor(fallSpd)}, "|")
     for i = 1, #M.State.WeatherPool do
         local it = M.State.WeatherPool[i]
         local p = it.Part
         if p and p.Parent then
             it.Pos = it.Pos - Vector3.new(0, fallSpd * dt, 0)
-            if M.State.WeatherMode == "Snow" then
-                it.Pos = it.Pos + Vector3.new(math.sin(os.clock() * 2 + it.Seed) * 0.12, 0, math.cos(os.clock() * 2 + it.Seed) * 0.12)
-                p.Shape = Enum.PartType.Ball
-                p.Size = Vector3.new(M.State.SnowSize, M.State.SnowSize, M.State.SnowSize)
+            if isSnow then
+                local t = os.clock() * 2 + it.Seed
+                it.Pos = it.Pos + Vector3.new(math.sin(t) * 0.12, 0, math.cos(t) * 0.12)
+            end
+            if it.Sig ~= visualSig then
+                it.Sig = visualSig
                 p.Color = M.State.WeatherColor
-                p.Transparency = 0.15
-            else
-                p.Shape = Enum.PartType.Block
-                p.Size = Vector3.new(0.08, math.clamp(fallSpd * 0.03, 1.2, 3.2), 0.08)
-                p.Color = M.State.WeatherColor
-                p.Transparency = 0.25
+                if isSnow then
+                    p.Shape = Enum.PartType.Ball
+                    p.Size = Vector3.new(M.State.SnowSize, M.State.SnowSize, M.State.SnowSize)
+                    p.Transparency = 0.15
+                else
+                    p.Shape = Enum.PartType.Block
+                    p.Size = Vector3.new(0.08, math.clamp(fallSpd * 0.03, 1.2, 3.2), 0.08)
+                    p.Transparency = 0.25
+                end
             end
             p.CFrame = CFrame.new(it.Pos)
 
@@ -1144,71 +1519,69 @@ end
 function M.F.StrikeLightning()
     local cam = workspace.CurrentCamera
     local char = M.LP and M.LP.Character
-    local origin = (char and char:FindFirstChild("HumanoidRootPart") and char.HumanoidRootPart.Position) or (cam and cam.CFrame.Position)
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local origin = (root and root.Position) or (cam and cam.CFrame.Position)
     if not origin then return end
 
-    local dist = math.random(80, 400); local angle = math.rad(math.random(0, 360))
+    local dist = math.random(80, 400)
+    local angle = math.rad(math.random(0, 360))
     local strikeGround = origin + Vector3.new(math.cos(angle) * dist, 0, math.sin(angle) * dist)
     local startSky = strikeGround + Vector3.new(math.random(-25, 25), math.random(180, 280), math.random(-25, 25))
 
+    local bolt = Instance.new("Model")
+    bolt.Name = "LightningBolt"
+
     local segments = 6
     local curPt = startSky
-    local branchParts = {}
-    local branchHls = {}
+    local boltParts = {}
 
     for i = 1, segments do
         local target = startSky:Lerp(strikeGround, i / segments)
-        if i < segments then target = target + Vector3.new(math.random(-12, 12), math.random(-4, 4), math.random(-12, 12)) end
-        
+        if i < segments then
+            target = target + Vector3.new(math.random(-12, 12), math.random(-4, 4), math.random(-12, 12))
+        end
+
         local seg = Instance.new("Part")
         seg.Size = Vector3.new(M.State.LightningSize, M.State.LightningSize, (target - curPt).Magnitude)
         seg.Material = Enum.Material.Neon
         seg.Color = Color3.fromRGB(240, 248, 255)
         seg.CanCollide = false
+        seg.CanTouch = false
+        seg.CanQuery = false
         seg.CastShadow = false
         seg.Anchored = true
         seg.CFrame = CFrame.new((curPt + target) / 2, target)
-        seg.Parent = M.UI.lFolder
+        seg.Parent = bolt
 
-        local hl = Instance.new("Highlight")
-        hl.Adornee = seg
-        hl.FillColor = Color3.fromRGB(255, 255, 255)
-        hl.OutlineColor = Color3.fromRGB(200, 235, 255)
-        hl.FillTransparency = 0.05
-        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-        hl.Parent = seg
-
-        table.insert(branchParts, seg)
-        table.insert(branchHls, hl)
+        table.insert(boltParts, seg)
         curPt = target
     end
 
+    local hl = Instance.new("Highlight")
+    hl.Adornee = bolt
+    hl.FillColor = Color3.fromRGB(255, 255, 255)
+    hl.OutlineColor = Color3.fromRGB(200, 235, 255)
+    hl.FillTransparency = 0.05
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.Parent = bolt
+
+    bolt.Parent = M.UI.lFolder
+
+    local fadeDur = 0.45
+    M.Services.D:AddItem(bolt, M.State.LightningDuration + fadeDur + 0.1)
+
     task.delay(M.State.LightningDuration, function()
-        local fadeDur = 0.45
+        if not bolt.Parent then return end
         local fadeInfo = TweenInfo.new(fadeDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        
-        for _, part in ipairs(branchParts) do
-            if part and part.Parent then
+        for _, part in ipairs(boltParts) do
+            if part.Parent then
                 M.Services.T:Create(part, fadeInfo, {
                     Transparency = 1,
                     Size = Vector3.new(0.01, 0.01, part.Size.Z)
                 }):Play()
             end
         end
-        for _, hl in ipairs(branchHls) do
-            if hl and hl.Parent then
-                M.Services.T:Create(hl, fadeInfo, {
-                    FillTransparency = 1,
-                    OutlineTransparency = 1
-                }):Play()
-            end
-        end
-        
-        task.delay(fadeDur + 0.05, function()
-            for _, p in ipairs(branchParts) do
-                if p and p.Parent then p:Destroy() end
-            end
-        end)
+        M.Services.T:Create(hl, fadeInfo, {FillTransparency = 1, OutlineTransparency = 1}):Play()
     end)
 end
 
@@ -1220,8 +1593,8 @@ function M.F.SpawnMeteor()
 
     local dist = math.random(300, 700)
     local angle = math.rad(math.random(0, 360))
-    local startY = originPos.Y + math.random(220, 420)
-    local startPos = originPos + Vector3.new(math.cos(angle) * dist, startY, math.sin(angle) * dist)
+    -- Высота прибавляется к позиции игрока один раз (раньше Y игрока учитывался дважды)
+    local startPos = originPos + Vector3.new(math.cos(angle) * dist, math.random(220, 420), math.sin(angle) * dist)
     local dropAngle = math.rad(math.random(25, 40))
     local flyDir = (Vector3.new(math.sin(angle + math.pi), -math.tan(dropAngle), math.cos(angle + math.pi))).Unit
     local travelLen = math.clamp(dist * 1.7, 500, 1400)
@@ -1230,7 +1603,9 @@ function M.F.SpawnMeteor()
     local p = Instance.new("Part")
     p.Shape = Enum.PartType.Ball; p.Size = Vector3.new(M.State.MeteorSize, M.State.MeteorSize, M.State.MeteorSize)
     p.Material = Enum.Material.Neon; p.Color = M.State.MeteorColor
-    p.CanCollide = false; p.CastShadow = false; p.CFrame = CFrame.new(startPos); p.Parent = M.UI.mFolder
+    -- Anchored обязателен: иначе гравитация тянет метеорит вниз и спорит с анимацией полёта
+    p.Anchored = true; p.CanCollide = false; p.CanTouch = false; p.CanQuery = false; p.CastShadow = false
+    p.CFrame = CFrame.new(startPos); p.Parent = M.UI.mFolder
 
     local a0 = Instance.new("Attachment", p); a0.Position = Vector3.new(0, M.State.MeteorSize * 0.45, 0)
     local a1 = Instance.new("Attachment", p); a1.Position = Vector3.new(0, -M.State.MeteorSize * 0.45, 0)
@@ -1311,7 +1686,7 @@ function M.F.RebuildWireHat()
         local rod = Instance.new("Part")
         rod.Size = Vector3.new(lineThick, lineThick, (p2 - p1).Magnitude)
         rod.Material = Enum.Material.Neon; rod.Color = baseCol
-        rod.CanCollide = false; rod.Massless = true
+        rod.CanCollide = false; rod.CanTouch = false; rod.CanQuery = false; rod.CastShadow = false; rod.Massless = true
         rod.CFrame = rootCFrame * CFrame.new((p1 + p2) / 2, p2)
         rod.Parent = model
         local weld = Instance.new("WeldConstraint")
@@ -1334,45 +1709,229 @@ function M.F.RebuildWireHat()
 end
 
 function M.F.ApplyDark()
-    pcall(function() M.Services.L.ExposureCompensation = M.State.DarkWorld and (-M.State.DarkIntensity * 3.5) or M.State.OrigExp end)
+    pcall(function()
+        if M.State.DarkWorld then
+            M.Data.DarkApplied = true
+            M.Services.L.ExposureCompensation = -M.State.DarkIntensity * 3.5
+        elseif M.Data.DarkApplied then
+            M.Data.DarkApplied = false
+            M.Services.L.ExposureCompensation = M.State.OrigExp
+        end
+    end)
 end
 
+-- Туман: мы всегда создаём СВОЙ Atmosphere и не трогаем объекты игры.
+-- Раньше скрипт менял Atmosphere самой игры и при выключении не возвращал.
+-- Чужие Atmosphere на время тумана обнуляем и запоминаем, чтобы вернуть.
 function M.F.ApplyFog()
     pcall(function()
-        local atmo = M.Services.L:FindFirstChild("MatsysenseAtmosphere") or M.Services.L:FindFirstChildOfClass("Atmosphere")
-        if M.State.FogOn then
-            if not atmo then
-                atmo = Instance.new("Atmosphere")
-                atmo.Name = "MatsysenseAtmosphere"
-                atmo.Parent = M.Services.L
-            end
-            atmo.Density = math.clamp(M.State.FogDensity, 0.05, 0.99)
-            atmo.Offset = 0.0
-            atmo.Haze = math.clamp(M.State.FogHaze, 0, 10)
-            atmo.Color = M.State.FogColor
-            atmo.Decay = M.State.FogColor
-            atmo.Glare = 0.0
+        local L = M.Services.L
+        local ours = L:FindFirstChild("MatsysenseAtmosphere")
 
-            for _, child in ipairs(M.Services.L:GetChildren()) do
-                if child:IsA("Atmosphere") and child ~= atmo then
+        if M.State.FogOn then
+            M.Data.FogApplied = true
+            if not ours then
+                ours = Instance.new("Atmosphere")
+                ours.Name = "MatsysenseAtmosphere"
+                ours.Parent = L
+            end
+            ours.Density = math.clamp(M.State.FogDensity, 0.05, 0.99)
+            ours.Offset = 0.0
+            ours.Haze = math.clamp(M.State.FogHaze, 0, 10)
+            ours.Color = M.State.FogColor
+            ours.Decay = M.State.FogColor
+            ours.Glare = 0.0
+
+            for _, child in ipairs(L:GetChildren()) do
+                if child:IsA("Atmosphere") and child ~= ours then
+                    if M.Data.AtmoBackup[child] == nil then
+                        M.Data.AtmoBackup[child] = child.Density
+                    end
                     child.Density = 0
                 end
             end
 
-            M.Services.L.FogStart = 0
-            M.Services.L.FogEnd = math.clamp(320 - (M.State.FogDensity * 280), 10, 500)
-            M.Services.L.FogColor = M.State.FogColor
-            M.Services.L.OutdoorAmbient = M.State.FogColor:Lerp(Color3.fromRGB(15, 15, 15), 0.35)
-            M.Services.L.Ambient = M.State.FogColor:Lerp(Color3.fromRGB(15, 15, 15), 0.35)
-        else
-            if atmo and atmo.Name == "MatsysenseAtmosphere" then
-                atmo:Destroy()
+            L.FogStart = 0
+            L.FogEnd = math.clamp(320 - (M.State.FogDensity * 280), 10, 500)
+            L.FogColor = M.State.FogColor
+            local ambient = M.State.FogColor:Lerp(Color3.fromRGB(15, 15, 15), 0.35)
+            L.OutdoorAmbient = ambient
+            L.Ambient = ambient
+        elseif M.Data.FogApplied then
+            -- Возвращаем всё как было ровно один раз
+            M.Data.FogApplied = false
+            if ours then ours:Destroy() end
+            for atmo, density in pairs(M.Data.AtmoBackup) do
+                if atmo.Parent then atmo.Density = density end
             end
-            M.Services.L.FogStart = M.State.OrigFogStart
-            M.Services.L.FogEnd = M.State.OrigFogEnd
-            M.Services.L.FogColor = M.State.OrigFogColor
-            M.Services.L.OutdoorAmbient = M.State.OrigOutdoorAmb
+            table.clear(M.Data.AtmoBackup)
+            L.FogStart = M.State.OrigFogStart
+            L.FogEnd = M.State.OrigFogEnd
+            L.FogColor = M.State.OrigFogColor
+            L.OutdoorAmbient = M.State.OrigOutdoorAmb
+            -- Раньше Ambient никогда не возвращался
+            L.Ambient = M.Data.OrigAmbient
         end
+    end)
+end
+
+-- Облака: если в игре уже есть Clouds, меняем их и запоминаем исходные значения (вернём при выключении).
+-- Если нет - создаём свои и удаляем при выключении.
+-- ==============================================================================
+-- [ CUSTOM SKYBOX ]
+-- Не зависит от Lighting.ClockTime, поэтому не конфликтует с функцией "Свое время суток".
+-- Время меняет только освещение, а картинки неба остаются нашими.
+-- Если игровой скрипт (например, смена дня и ночи) подменит текстуры, мы вернём свои.
+-- ==============================================================================
+
+function M.F.RenderSkyStatus()
+    local label = M.UI.SkyStatusLabel
+    local st = M.Data.SkyStatus
+    if not label or not st then return end
+    local text = M.Translate(st.Key)
+    if st.Arg ~= nil then text = string.format(text, st.Arg) end
+    label.Text = text
+    if st.Kind == "ok" then
+        label.TextColor3 = Color3.fromRGB(110, 220, 150)
+    elseif st.Kind == "error" then
+        label.TextColor3 = Color3.fromRGB(255, 105, 105)
+    else
+        label.TextColor3 = Color3.fromRGB(150, 160, 185)
+    end
+end
+
+function M.F.SetSkyStatus(key, arg, kind)
+    M.Data.SkyStatus = {Key = key, Arg = arg, Kind = kind}
+    M.F.RenderSkyStatus()
+end
+
+-- Разбирает строку с ID. Принимает "123456", "rbxassetid://123456" и ссылки со словом id=123456.
+-- Возвращает: таблицу из 6 строк, ключ статуса, аргумент статуса.
+function M.F.ParseSkyIds(text)
+    local ids = {}
+    for token in string.gmatch(text or "", "[^,;%s]+") do
+        local digits = string.match(token, "%d+")
+        if not digits or #digits < 5 or #digits > 19 then
+            return nil, "Sky_BadId", string.sub(token, 1, 24)
+        end
+        table.insert(ids, "rbxassetid://" .. digits)
+    end
+
+    if #ids == 0 then return nil, "Sky_Idle", nil end
+    if #ids == 1 then
+        local one = ids[1]
+        return {one, one, one, one, one, one}, "Sky_Ok1", nil
+    end
+    if #ids == 6 then return ids, "Sky_Ok6", nil end
+    return nil, "Sky_BadCount", #ids
+end
+
+-- Находит Sky: сначала наш, потом игровой. Для игрового запоминаем исходные значения.
+function M.F.AcquireSky()
+    local L = M.Services.L
+    local sky = L:FindFirstChild("MatsysenseSky") or L:FindFirstChildOfClass("Sky")
+    if not sky then
+        sky = Instance.new("Sky")
+        sky.Name = "MatsysenseSky"
+        sky.Parent = L
+    end
+
+    if sky.Name ~= "MatsysenseSky" then
+        local backup = M.Data.SkyBackup
+        if not backup or backup.Object ~= sky then
+            backup = {Object = sky, CelestialBodiesShown = sky.CelestialBodiesShown, Faces = {}}
+            for _, face in ipairs(M.Data.SkyFaces) do
+                backup.Faces[face] = sky[face]
+            end
+            M.Data.SkyBackup = backup
+        end
+    end
+    return sky
+end
+
+function M.F.RestoreSky()
+    M.Data.SkyWanted = nil
+    M.Data.SkyToken = M.Data.SkyToken + 1
+
+    local ours = M.Services.L:FindFirstChild("MatsysenseSky")
+    if ours then ours:Destroy() end
+
+    local backup = M.Data.SkyBackup
+    if backup and backup.Object and backup.Object.Parent then
+        for face, value in pairs(backup.Faces) do
+            backup.Object[face] = value
+        end
+        backup.Object.CelestialBodiesShown = backup.CelestialBodiesShown
+    end
+    M.Data.SkyBackup = nil
+end
+
+-- silent = true: тихая проверка раз в полсекунды (ничего не разбираем заново, статус не трогаем)
+function M.F.ApplySky(silent)
+    pcall(function()
+        if not M.State.SkyOn then
+            M.F.RestoreSky()
+            if not silent then M.F.SetSkyStatus("Sky_Off", nil, "idle") end
+            return
+        end
+
+        if not silent then
+            local faces, info, arg = M.F.ParseSkyIds(M.State.SkyIds)
+            if not faces then
+                -- Неверный ввод: возвращаем обычное небо, чтобы не оставлять "старое" без ведома игрока
+                M.F.RestoreSky()
+                M.F.SetSkyStatus(info, arg, info == "Sky_Idle" and "idle" or "error")
+                return
+            end
+            M.Data.SkyWanted = faces
+            M.Data.SkyOkKey = info
+        end
+
+        local faces = M.Data.SkyWanted
+        if not faces then return end
+
+        local sky = M.F.AcquireSky()
+        local changed = false
+
+        for i, face in ipairs(M.Data.SkyFaces) do
+            -- Сравниваем по цифрам ID: движок может записать ссылку в другом виде
+            local current = string.match(tostring(sky[face]), "%d+")
+            local wanted = string.match(faces[i], "%d+")
+            if current ~= wanted then
+                sky[face] = faces[i]
+                changed = true
+            end
+        end
+
+        local showBodies = not M.State.SkyHideBodies
+        if sky.CelestialBodiesShown ~= showBodies then
+            sky.CelestialBodiesShown = showBodies
+        end
+
+        if silent or not changed and M.Data.SkyStatus and M.Data.SkyStatus.Kind == "ok" then
+            return
+        end
+
+        -- Проверяем, что картинки реально загрузились, и показываем результат
+        M.Data.SkyToken = M.Data.SkyToken + 1
+        local token = M.Data.SkyToken
+        M.F.SetSkyStatus("Sky_Loading", nil, "idle")
+        task.spawn(function()
+            local failed = 0
+            pcall(function()
+                M.Services.C:PreloadAsync({sky}, function(_, status)
+                    if status == Enum.AssetFetchStatus.Failure or status == Enum.AssetFetchStatus.TimedOut then
+                        failed = failed + 1
+                    end
+                end)
+            end)
+            if token ~= M.Data.SkyToken or M.State.IsUninjected then return end
+            if failed > 0 then
+                M.F.SetSkyStatus("Sky_Fail", failed, "error")
+            else
+                M.F.SetSkyStatus(M.Data.SkyOkKey, nil, "ok")
+            end
+        end)
     end)
 end
 
@@ -1380,7 +1939,7 @@ function M.F.ApplyClouds()
     pcall(function()
         local terrain = workspace:FindFirstChildOfClass("Terrain")
         if not terrain then return end
-        
+
         local clouds = terrain:FindFirstChild("MatsysenseClouds") or terrain:FindFirstChildOfClass("Clouds")
         if M.State.CloudsOn then
             if not clouds then
@@ -1388,16 +1947,27 @@ function M.F.ApplyClouds()
                 clouds.Name = "MatsysenseClouds"
                 clouds.Parent = terrain
             end
+            if clouds.Name ~= "MatsysenseClouds" and not M.Data.CloudBackup then
+                M.Data.CloudBackup = {
+                    Object = clouds, Enabled = clouds.Enabled,
+                    Density = clouds.Density, Cover = clouds.Cover, Color = clouds.Color
+                }
+            end
             clouds.Enabled = true
             clouds.Density = math.clamp(M.State.CloudDensity, 0.01, 1.0)
             clouds.Cover = math.clamp(M.State.CloudCover / 100, 0.0, 1.0)
             clouds.Color = M.State.CloudColor
         else
+            local backup = M.Data.CloudBackup
             if clouds and clouds.Name == "MatsysenseClouds" then
                 clouds:Destroy()
-            elseif clouds then
-                clouds.Enabled = false
+            elseif backup and backup.Object == clouds and clouds.Parent then
+                clouds.Enabled = backup.Enabled
+                clouds.Density = backup.Density
+                clouds.Cover = backup.Cover
+                clouds.Color = backup.Color
             end
+            M.Data.CloudBackup = nil
         end
     end)
 end
@@ -1405,6 +1975,12 @@ end
 -- ==============================================================================
 -- [ BODY ORIENTATION & MOTOR6D HOOKS (ROBUST TRANSFORM CORE) ]
 -- ==============================================================================
+local function FindMotor(char, name)
+    local obj = char:FindFirstChild(name, true)
+    if obj and obj:IsA("Motor6D") then return obj end
+    return nil
+end
+
 local function UpdateRigOrientation(dt)
     if M.State.IsUninjected then return end
     local char = M.LP and M.LP.Character
@@ -1413,60 +1989,56 @@ local function UpdateRigOrientation(dt)
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not h or h.Health <= 0 or not hrp then return end
 
+    local wantPitch = M.State.PitchModification
+    local wantSpin = M.State.RotationYaw and not M.State.Levitation
+    -- Ничего не включено и нечего возвращать - не трогаем суставы вообще
+    if not wantPitch and not wantSpin and not M.Data.PitchDirty and not M.Data.SpinDirty then return end
+
+    local cache = M.State.OrigC0Cache
     local isR15 = (h.RigType == Enum.HumanoidRigType.R15)
-    local rootMotor = hrp:FindFirstChild("RootJoint") or hrp:FindFirstChild("Root")
-    local waistMotor = char:FindFirstChild("Waist", true)
-    local neckMotor = char:FindFirstChild("Neck", true)
 
-    if rootMotor and not M.State.OrigC0Cache[rootMotor] then
-        M.State.OrigC0Cache[rootMotor] = rootMotor.C0
-    end
-    if waistMotor and not M.State.OrigC0Cache[waistMotor] then
-        M.State.OrigC0Cache[waistMotor] = waistMotor.C0
-    end
-    if neckMotor and not M.State.OrigC0Cache[neckMotor] then
-        M.State.OrigC0Cache[neckMotor] = neckMotor.C0
+    -- ГЛАВНЫЙ БАГ ВРАЩЕНИЯ: в R15 мотор "Root" лежит внутри LowerTorso, а не внутри HumanoidRootPart.
+    -- Старый код искал его только в HumanoidRootPart, находил nil, и персонаж не крутился.
+    local rootMotor = FindMotor(char, "RootJoint") or FindMotor(char, "Root")
+    local waistMotor = FindMotor(char, "Waist")
+    local neckMotor = FindMotor(char, "Neck")
+
+    for _, motor in ipairs({rootMotor, waistMotor, neckMotor}) do
+        if motor and not cache[motor] then cache[motor] = motor.C0 end
     end
 
-    if M.State.PitchModification then
+    if wantPitch then
+        M.Data.PitchDirty = true
         local pRad = math.rad(M.State.PitchAngle)
         if isR15 then
-            if waistMotor and M.State.OrigC0Cache[waistMotor] then
-                waistMotor.C0 = M.State.OrigC0Cache[waistMotor] * CFrame.Angles(pRad * 0.65, 0, 0)
-            end
-            if neckMotor and M.State.OrigC0Cache[neckMotor] then
-                neckMotor.C0 = M.State.OrigC0Cache[neckMotor] * CFrame.Angles(pRad * 0.35, 0, 0)
-            end
-        else
-            if neckMotor and M.State.OrigC0Cache[neckMotor] then
-                neckMotor.C0 = M.State.OrigC0Cache[neckMotor] * CFrame.Angles(pRad, 0, 0)
-            end
+            if waistMotor then waistMotor.C0 = cache[waistMotor] * CFrame.Angles(pRad * 0.65, 0, 0) end
+            if neckMotor then neckMotor.C0 = cache[neckMotor] * CFrame.Angles(pRad * 0.35, 0, 0) end
+        elseif neckMotor then
+            neckMotor.C0 = cache[neckMotor] * CFrame.Angles(pRad, 0, 0)
         end
-    else
-        if waistMotor and M.State.OrigC0Cache[waistMotor] then 
-            waistMotor.C0 = M.State.OrigC0Cache[waistMotor] 
-        end
-        if neckMotor and M.State.OrigC0Cache[neckMotor] then 
-            neckMotor.C0 = M.State.OrigC0Cache[neckMotor] 
-        end
+    elseif M.Data.PitchDirty then
+        M.Data.PitchDirty = false
+        if waistMotor and cache[waistMotor] then waistMotor.C0 = cache[waistMotor] end
+        if neckMotor and cache[neckMotor] then neckMotor.C0 = cache[neckMotor] end
     end
 
-    if M.State.RotationYaw and not M.State.Levitation and rootMotor and M.State.OrigC0Cache[rootMotor] then
+    if wantSpin and rootMotor then
+        M.Data.SpinDirty = true
         local spd = M.State.YawSpeed
         if M.State.JitterSpin then
             spd = spd + math.random(-25, 25)
         end
         M.Data.SpinAngle = (M.Data.SpinAngle + (spd * dt * 25)) % 360
         local yRad = math.rad(M.Data.SpinAngle)
-        local baseC0 = M.State.OrigC0Cache[rootMotor]
 
         if isR15 then
-            rootMotor.C0 = baseC0 * CFrame.Angles(0, yRad, 0)
+            rootMotor.C0 = cache[rootMotor] * CFrame.Angles(0, yRad, 0)
         else
-            rootMotor.C0 = baseC0 * CFrame.Angles(0, 0, -yRad)
+            rootMotor.C0 = cache[rootMotor] * CFrame.Angles(0, 0, -yRad)
         end
-    elseif rootMotor and M.State.OrigC0Cache[rootMotor] then
-        rootMotor.C0 = M.State.OrigC0Cache[rootMotor]
+    elseif M.Data.SpinDirty then
+        M.Data.SpinDirty = false
+        if rootMotor and cache[rootMotor] then rootMotor.C0 = cache[rootMotor] end
     end
 end
 
@@ -1475,6 +2047,8 @@ table.insert(M.Data.Conns, M.Services.R.Stepped:Connect(function(_, dt)
 end))
 
 local function GetDirectionInput()
+    -- Если игрок печатает в поле меню, клавиши WASD не должны двигать персонажа
+    if M.Services.U:GetFocusedTextBox() then return 0, 0, 0 end
     local x, z, y = 0, 0, 0
     if M.Services.U:IsKeyDown(Enum.KeyCode.D) then x = x + 1 end
     if M.Services.U:IsKeyDown(Enum.KeyCode.A) then x = x - 1 end
@@ -1515,6 +2089,18 @@ table.insert(M.Data.Conns, M.Services.U.JumpRequest:Connect(function()
     end
 end))
 
+-- Защита от АФК: когда Roblox считает игрока бездействующим, отправляем "виртуальный клик"
+M.F.SetAntiAfk = function(on)
+    if M.Data.AfkConn then M.Data.AfkConn:Disconnect(); M.Data.AfkConn = nil end
+    if not on then return end
+    M.Data.AfkConn = M.LP.Idled:Connect(function()
+        pcall(function()
+            M.Services.V:CaptureController()
+            M.Services.V:ClickButton2(Vector2.new())
+        end)
+    end)
+end
+
 M.F.SetNoclip = function(on)
     M.State.PhaseCollision = on
     if M.UI.NoclipLoop then M.UI.NoclipLoop:Disconnect(); M.UI.NoclipLoop = nil end
@@ -1522,19 +2108,23 @@ M.F.SetNoclip = function(on)
         M.UI.NoclipLoop = M.Services.R.PreSimulation:Connect(function()
             if M.State.IsUninjected or not M.State.PhaseCollision or M.State.IsDead then return end
             local char = M.LP and M.LP.Character
-            if char and char.Parent then
-                for _, p in ipairs(char:GetDescendants()) do
-                    if p:IsA("BasePart") then p.CanCollide = false end
+            if not (char and char.Parent) then return end
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    -- Запоминаем исходное значение ОДИН раз, чтобы потом вернуть именно его
+                    if M.Data.NoclipOrig[part] == nil then
+                        M.Data.NoclipOrig[part] = part.CanCollide
+                    end
+                    part.CanCollide = false
                 end
             end
         end)
     else
-        local char = M.LP and M.LP.Character
-        if char then
-            for _, p in ipairs(char:GetDescendants()) do
-                if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then p.CanCollide = true end
-            end
+        -- Раньше всем деталям (даже шапкам) ставили CanCollide = true, и шапки начинали толкаться
+        for part, original in pairs(M.Data.NoclipOrig) do
+            if part.Parent then part.CanCollide = original end
         end
+        table.clear(M.Data.NoclipOrig)
     end
 end
 
@@ -1544,25 +2134,28 @@ end
 table.insert(M.Data.Conns, M.Services.R.Heartbeat:Connect(function(dt)
     if M.State.IsUninjected then return end
     local char = M.LP and M.LP.Character
-    if char and char.Parent then
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        local h = char:FindFirstChildOfClass("Humanoid")
-        local cam = workspace.CurrentCamera
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local h = char and char:FindFirstChildOfClass("Humanoid")
+    local cam = workspace.CurrentCamera
 
-        M.State.IsDead = (not h or h.Health <= 0)
-        if M.State.IsDead then return end
+    M.State.IsDead = not (h and h.Health > 0)
 
-        if M.State.Speed and hrp and h and not M.State.Levitation then
+    -- Раньше тут стоял return при смерти, и метеориты с молниями замирали. Теперь блок просто пропускается.
+    if char and char.Parent and not M.State.IsDead and hrp and h then
+        if M.State.Speed and not M.State.Levitation then
             local moveDir = h.MoveDirection
             if moveDir.Magnitude > 0 then
-                local curSpd = Vector3.new(hrp.AssemblyLinearVelocity.X, 0, hrp.AssemblyLinearVelocity.Z).Magnitude
+                local vel = hrp.AssemblyLinearVelocity
+                local curSpd = Vector3.new(vel.X, 0, vel.Z).Magnitude
                 if curSpd < M.State.SprintSpeed then
-                    hrp.CFrame = hrp.CFrame + (moveDir * ((M.State.SprintSpeed - h.WalkSpeed) * dt))
+                    -- math.max: если задали скорость ниже обычной, персонажа не должно тянуть назад
+                    local extra = math.max(M.State.SprintSpeed - h.WalkSpeed, 0)
+                    hrp.CFrame = hrp.CFrame + (moveDir * (extra * dt))
                 end
             end
         end
 
-        if M.State.Levitation and hrp and h and cam then
+        if M.State.Levitation and cam then
             hrp.AssemblyLinearVelocity = Vector3.zero
             local inX, inZ, inY = GetDirectionInput()
             local camCF = cam.CFrame
@@ -1578,6 +2171,18 @@ table.insert(M.Data.Conns, M.Services.R.Heartbeat:Connect(function(dt)
             local totalDir = Vector3.new(moveDir.X, inY, moveDir.Z)
             if totalDir.Magnitude > 0 then
                 hrp.CFrame = hrp.CFrame + (totalDir * (M.State.KinematicBoost * dt))
+            end
+        elseif M.State.ImpulseStutters then
+            -- Защита от толчков: срезаем слишком сильный разгон и бешеное вращение (раньше эта настройка ничего не делала)
+            local vel = hrp.AssemblyLinearVelocity
+            local flat = Vector3.new(vel.X, 0, vel.Z)
+            local limit = math.max(120, M.State.SprintSpeed * 2.5)
+            if flat.Magnitude > limit then
+                local capped = flat.Unit * limit
+                hrp.AssemblyLinearVelocity = Vector3.new(capped.X, vel.Y, capped.Z)
+            end
+            if hrp.AssemblyAngularVelocity.Magnitude > 40 then
+                hrp.AssemblyAngularVelocity = Vector3.zero
             end
         end
     end
@@ -1608,7 +2213,18 @@ table.insert(M.Data.Conns, M.Services.R.RenderStepped:Connect(function(dt)
     end
 
     M.F.UpdateWeatherProps(dt)
-    M.UpdatePlayerVisuals()
+
+    -- Внешний вид проверяем 10 раз в секунду, а не каждый кадр
+    if os.clock() - M.Data.LastVisual >= 0.1 then
+        M.Data.LastVisual = os.clock()
+        M.UpdatePlayerVisuals()
+    end
+
+    -- Страховка от игровых скриптов (смена дня и ночи и т.п.), которые подменяют небо
+    if M.State.SkyOn and os.clock() - M.Data.LastSkyCheck >= 0.5 then
+        M.Data.LastSkyCheck = os.clock()
+        M.F.ApplySky(true)
+    end
 
     if M.State.BacktrackShadows then
         if M.State.PacketChoke then
@@ -1637,19 +2253,7 @@ table.insert(M.Data.Conns, M.Services.R.RenderStepped:Connect(function(dt)
     local isAlive = (h and h.Health > 0)
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
 
-    if M.State.ThirdPerson and isAlive and hrp then
-        M.LP.CameraMode = Enum.CameraMode.Classic
-        M.LP.CameraMaxZoomDistance = M.State.ThirdPersonDist
-        M.LP.CameraMinZoomDistance = M.State.ThirdPersonDist
-        if not M.State.MenuOpen then
-            M.Services.U.MouseBehavior = Enum.MouseBehavior.LockCenter
-            local _, ry, _ = cam.CFrame:ToOrientation()
-            hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, ry, 0)
-        end
-    else
-        M.LP.CameraMaxZoomDistance = 400
-        M.LP.CameraMinZoomDistance = 0.5
-    end
+    M.F.UpdateThirdPerson(cam, hrp, h, M.State.ThirdPerson and isAlive)
 
     if M.State.ShowFov and M.State.AimAssist then
         M.UI.FovCircle.Visible = true
@@ -1661,22 +2265,7 @@ table.insert(M.Data.Conns, M.Services.R.RenderStepped:Connect(function(dt)
     end
 
     if M.State.TriggerAssist and not M.State.MenuOpen and isAlive then
-        local centerScreen = cam.ViewportSize / 2
-        local camRay = cam:ViewportPointToRay(centerScreen.X, centerScreen.Y)
-        local result = workspace:Raycast(camRay.Origin, camRay.Direction * 2000, M.RayParams)
-        local curTarget = nil
-
-        if result and result.Instance then
-            local model = result.Instance:FindFirstAncestorOfClass("Model")
-            if model and model:FindFirstChildOfClass("Humanoid") then
-                local playerFound = M.Services.P:GetPlayerFromCharacter(model)
-                if playerFound and playerFound ~= M.LP then
-                    if not (M.State.TriggerTeamCheck and M.IsTeammate(playerFound)) then
-                        curTarget = model
-                    end
-                end
-            end
-        end
+        local curTarget = M.GetTriggerTarget(cam)
 
         if curTarget then
             if (M.State.TriggerLoop or curTarget ~= M.Data.LastTriggerTarget) and not M.Data.TriggerCD then
@@ -1684,17 +2273,8 @@ table.insert(M.Data.Conns, M.Services.R.RenderStepped:Connect(function(dt)
                 M.Data.TriggerCD = true
 
                 task.spawn(function()
-                    if M.State.TriggerDelay > 0 then task.wait(M.State.TriggerDelay) end
-                    local currentEquipped = char and char:FindFirstChildOfClass("Tool")
-                    if currentEquipped then
-                        pcall(function() currentEquipped:Activate() end)
-                    end
-                    pcall(function()
-                        M.Services.V:Button1Down(Vector2.zero)
-                        task.wait(0.02)
-                        M.Services.V:Button1Up(Vector2.zero)
-                    end)
-                    task.wait(0.06)
+                    -- pcall гарантирует, что кулдаун снимется, даже если выстрел вызвал ошибку
+                    pcall(M.F.FireTrigger)
                     M.Data.TriggerCD = false
                 end)
             end
@@ -1726,15 +2306,7 @@ table.insert(M.Data.Conns, M.Services.R.RenderStepped:Connect(function(dt)
         end
     end
 
-    if M.State.StateForce and char and char.Parent and not M.State.IsDead then
-        local myRoot = char:FindFirstChild("HumanoidRootPart")
-        local myHum = char:FindFirstChildOfClass("Humanoid")
-        if myRoot and myHum then
-            myHum.PlatformStand = false
-            myHum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-            myHum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-        end
-    end
+    M.F.UpdateStateForce()
 
     if M.State.Esp then
         local vSize = cam.ViewportSize
@@ -1934,12 +2506,19 @@ end))
 table.insert(M.Data.Conns, M.Services.U.InputBegan:Connect(function(inp, proc)
     if M.State.IsUninjected then return end
     if not proc and inp.KeyCode == Enum.KeyCode.RightShift then
+        if not M.UI.Main then return end
         if M.UI.Main.Visible then M.F.CloseMenu() else M.F.OpenMenu() end
         return
     end
     if M.State.ListeningBind then
         if inp.UserInputType == Enum.UserInputType.Keyboard then
-            M.State.ListeningBind.Set((inp.KeyCode == Enum.KeyCode.Backspace or inp.KeyCode == Enum.KeyCode.Delete or inp.KeyCode == Enum.KeyCode.Escape) and nil or inp.KeyCode)
+            -- Классическая ловушка Lua: "условие and nil or значение" ВСЕГДА даёт значение, потому что nil считается ложью.
+            -- Из-за этого Backspace/Delete/Escape не снимали бинд. Пишем честным if.
+            local code = inp.KeyCode
+            if code == Enum.KeyCode.Backspace or code == Enum.KeyCode.Delete or code == Enum.KeyCode.Escape then
+                code = nil
+            end
+            M.State.ListeningBind.Set(code)
             M.State.ListeningBind = nil
         elseif inp.UserInputType == Enum.UserInputType.MouseButton1 then
             M.State.ListeningBind.Cancel()
@@ -1955,6 +2534,9 @@ end))
 M.UI.Gui = Instance.new("ScreenGui")
 M.UI.Gui.Name = "MatsysenseHub"
 M.UI.Gui.ResetOnSpawn = false
+M.UI.Gui.DisplayOrder = 200 -- меню выше ESP-рамок
+-- Global нужен, чтобы выпадающие списки (ZIndex 15) рисовались поверх следующих карточек
+M.UI.Gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
 M.UI.Gui.Parent = M.TargetGui
 
 M.UI.Tooltip = Instance.new("Frame", M.UI.Gui)
@@ -1986,7 +2568,7 @@ function M.F.AttachTooltip(card, key)
 
     card.MouseEnter:Connect(function()
         M.Data.HoverCard = card
-        if M.Data.HoverTask then task.cancel(M.Data.HoverTask) end
+        if M.Data.HoverTask then pcall(task.cancel, M.Data.HoverTask) end
         M.Data.HoverTask = task.spawn(function()
             task.wait(1.0)
             if M.Data.HoverCard == card and not M.State.IsUninjected then
@@ -2006,7 +2588,7 @@ function M.F.AttachTooltip(card, key)
     card.MouseLeave:Connect(function()
         if M.Data.HoverCard == card then
             M.Data.HoverCard = nil
-            if M.Data.HoverTask then task.cancel(M.Data.HoverTask) end
+            if M.Data.HoverTask then pcall(task.cancel, M.Data.HoverTask) end
             M.UI.Tooltip.Visible = false
         end
     end)
@@ -2041,7 +2623,7 @@ pillPad.PaddingLeft = UDim.new(0, 8); pillPad.PaddingRight = UDim.new(0, 12)
 M.UI.PillAvatar = Instance.new("ImageLabel", M.UI.Pill)
 M.UI.PillAvatar.Size = UDim2.new(0, 22, 0, 22); M.UI.PillAvatar.LayoutOrder = 1; M.UI.PillAvatar.BackgroundTransparency = 1
 Instance.new("UICorner", M.UI.PillAvatar).CornerRadius = UDim.new(1, 0)
-pcall(function() M.UI.PillAvatar.Image = M.Services.P:GetUserThumbnailAsync(M.LP.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420) end)
+task.spawn(pcall, function() M.UI.PillAvatar.Image = M.Services.P:GetUserThumbnailAsync(M.LP.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420) end)
 
 M.UI.PillTxt = Instance.new("TextLabel", M.UI.Pill)
 M.UI.PillTxt.Size = UDim2.new(0, 0, 1, 0); M.UI.PillTxt.AutomaticSize = Enum.AutomaticSize.X; M.UI.PillTxt.LayoutOrder = 2
@@ -2066,17 +2648,18 @@ do
             end
         end
     end)
-    M.Services.U.InputChanged:Connect(function(inp)
+    M.Conn(M.Services.U.InputChanged, function(inp)
         if isPillDragging and not M.State.PillLocked and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
             local d = inp.Position - pDragStart
             M.UI.Pill.Position = UDim2.new(pStartPos.X.Scale, pStartPos.X.Offset + d.X, pStartPos.Y.Scale, pStartPos.Y.Offset + d.Y)
         end
     end)
-    M.Services.U.InputEnded:Connect(function(inp)
+    M.Conn(M.Services.U.InputEnded, function(inp)
         if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
             if clickDownPos and (inp.Position - clickDownPos).Magnitude < 6 then
-                if not M.UI.Main.Visible then M.F.OpenMenu() end
+                if M.UI.Main and not M.UI.Main.Visible then M.F.OpenMenu() end
             end
+            clickDownPos = nil
             isPillDragging = false
         end
     end)
@@ -2179,14 +2762,14 @@ do
             isDragging = true; dragStart = inp.Position; startPos = M.UI.Main.Position
         end
     end)
-    M.Services.U.InputChanged:Connect(function(inp)
+    M.Conn(M.Services.U.InputChanged, function(inp)
         if isDragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
             local delta = inp.Position - dragStart
             M.UI.Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
             M.F.SyncPreviewPos()
         end
     end)
-    M.Services.U.InputEnded:Connect(function(inp)
+    M.Conn(M.Services.U.InputEnded, function(inp)
         if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then isDragging = false end
     end)
 
@@ -2200,7 +2783,7 @@ do
             isResizing = true; resizeStart = inp.Position; startSize = Vector2.new(M.UI.Main.Size.X.Offset, M.UI.Main.Size.Y.Offset)
         end
     end)
-    M.Services.U.InputChanged:Connect(function(inp)
+    M.Conn(M.Services.U.InputChanged, function(inp)
         if isResizing and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
             local d = inp.Position - resizeStart
             M.UI.Main.Size = UDim2.new(0, math.clamp(startSize.X + d.X, 600, 960), 0, math.clamp(startSize.Y + d.Y, 420, 760))
@@ -2208,7 +2791,7 @@ do
             M.F.SyncPreviewPos()
         end
     end)
-    M.Services.U.InputEnded:Connect(function(inp)
+    M.Conn(M.Services.U.InputEnded, function(inp)
         if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then isResizing = false end
     end)
 end
@@ -2289,7 +2872,7 @@ Instance.new("UICorner", M.UI.ProfileCard).CornerRadius = UDim.new(0, 8); table.
 M.UI.Avatar = Instance.new("ImageLabel", M.UI.ProfileCard)
 M.UI.Avatar.Size = UDim2.new(0, 36, 0, 36); M.UI.Avatar.Position = UDim2.new(0, 8, 0.5, -18); M.UI.Avatar.BackgroundTransparency = 1
 Instance.new("UICorner", M.UI.Avatar).CornerRadius = UDim.new(1, 0)
-pcall(function() M.UI.Avatar.Image = M.Services.P:GetUserThumbnailAsync(M.LP.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420) end)
+task.spawn(pcall, function() M.UI.Avatar.Image = M.Services.P:GetUserThumbnailAsync(M.LP.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420) end)
 
 M.UI.PName = Instance.new("TextLabel", M.UI.ProfileCard)
 M.UI.PName.Size = UDim2.new(1, -54, 0, 16); M.UI.PName.Position = UDim2.new(0, 50, 0, 10); M.UI.PName.BackgroundTransparency = 1
@@ -2416,7 +2999,7 @@ function M.F.MakeSection(parent, locKey, order)
     lbl.Size = UDim2.new(1, 0, 1, 0)
     lbl.Position = UDim2.new(0, 4, 0, 2)
     lbl.BackgroundTransparency = 1
-    lbl.Text = M.Translate(locKey):upper()
+    lbl.Text = M.Upper(M.Translate(locKey))
     lbl.TextColor3 = Color3.fromRGB(140, 155, 185)
     lbl.Font = Enum.Font.GothamBold
     lbl.TextSize = 10
@@ -2428,7 +3011,7 @@ function M.F.MakeSection(parent, locKey, order)
     line.BackgroundColor3 = Color3.fromRGB(35, 40, 54)
     line.BorderSizePixel = 0
 
-    table.insert(M.Data.RegUI, { SetLanguage = function() lbl.Text = M.Translate(locKey):upper() end })
+    table.insert(M.Data.RegUI, { SetLanguage = function() lbl.Text = M.Upper(M.Translate(locKey)) end })
     return f
 end
 
@@ -2554,7 +3137,13 @@ function M.F.MakeSpeedCard(parent, locKey, stateValKey, isFly, order, tFn, onV)
     return c
 end
 
+-- Эти ползунки должны давать только целые числа (количество штук, толщина в пикселях)
+local INTEGER_SLIDERS = {GhostCount = true, OrbitCount = true, EspHealthBarThick = true}
+
 function M.F.MakeSlider(parent, locKey, stateKey, mn, mx, un, order, cb)
+    -- Целые числа для больших диапазонов. Секунды ("с") всегда дробные.
+    -- Раньше проверка по букве "с" случайно делала дробными и "мс" (миллисекунды).
+    local useInteger = (mx > 10 and un ~= "с") or INTEGER_SLIDERS[stateKey] == true
     local c = M.F.MakeCard(parent, 40); c.LayoutOrder = order
     local labelText = M.Translate(locKey) .. (un and ("  " .. un) or "")
     local l = Instance.new("TextLabel", c)
@@ -2586,9 +3175,10 @@ function M.F.MakeSlider(parent, locKey, stateKey, mn, mx, un, order, cb)
     local function upd(pos)
         local curAbsPos = trk.AbsolutePosition
         local curAbsSz = trk.AbsoluteSize
+        if curAbsSz.X <= 0 then return end
         local r = math.clamp((pos.X - curAbsPos.X) / curAbsSz.X, 0, 1)
         local val = mn + (r * (mx - mn))
-        val = (mx > 10 and not tostring(un):find("с")) and math.round(val) or (math.floor(val * 100) / 100)
+        val = useInteger and math.round(val) or (math.floor(val * 100) / 100)
         M.State[stateKey] = val
         setVisual(val)
         if cb then cb(val) end
@@ -2604,7 +3194,7 @@ function M.F.MakeSlider(parent, locKey, stateKey, mn, mx, un, order, cb)
         local n = tonumber(box.Text)
         if n then
             n = math.clamp(n, mn, mx)
-            if (mx > 10 and not tostring(un):find("с")) then n = math.round(n) else n = math.floor(n * 100) / 100 end
+            if useInteger then n = math.round(n) else n = math.floor(n * 100) / 100 end
             M.State[stateKey] = n
             setVisual(n)
             if cb then cb(n) end
@@ -2620,6 +3210,30 @@ function M.F.MakeSlider(parent, locKey, stateKey, mn, mx, un, order, cb)
         Callback = cb
     })
     return c
+end
+
+-- ==============================================================================
+-- [ МАТЕМАТИКА ПАЛИТРЫ ]
+-- Чистые функции без объектов Roblox: их можно проверять модульными тестами.
+-- ==============================================================================
+M.ColorMath = {}
+
+-- У белого, серого и чёрного оттенок (hue) не определён: Color3:ToHSV() возвращает 0.
+-- Раньше палитра брала этот 0 и "теряла" выбранный оттенок. Теперь при таких цветах оставляем прежний.
+function M.ColorMath.ResolveHue(previousHue, newHue, saturation, value)
+    if saturation > 0.001 and value > 0.001 then
+        return newHue
+    end
+    return previousHue
+end
+
+-- Если цвет почти белый/серый (мало насыщенности) или почти чёрный (мало яркости),
+-- движение ползунка оттенка не меняет итоговый цвет и выглядит как "не работает".
+-- Поэтому перед сменой оттенка поднимаем насыщенность и яркость до видимых значений.
+function M.ColorMath.PrepareForHueChange(saturation, value)
+    if saturation < 0.05 then saturation = 0.55 end
+    if value < 0.15 then value = 1 end
+    return saturation, value
 end
 
 function M.F.MakePicker(parent, locKey, stateColorKey, order, cb)
@@ -2656,6 +3270,17 @@ function M.F.MakePicker(parent, locKey, stateColorKey, order, cb)
         ColorSequenceKeypoint.new(0.4, Color3.fromRGB(0, 255, 0)), ColorSequenceKeypoint.new(0.6, Color3.fromRGB(0, 255, 255)),
         ColorSequenceKeypoint.new(0.8, Color3.fromRGB(0, 0, 255)), ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0))
     })
+
+    -- Маркер на полосе оттенка: раньше положения ползунка не было видно вообще
+    local hueKnob = Instance.new("Frame", hb)
+    hueKnob.Size = UDim2.new(0, 6, 0, 14)
+    hueKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+    hueKnob.Position = UDim2.new(cH, 0, 0.5, 0)
+    hueKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    hueKnob.BorderSizePixel = 0
+    Instance.new("UICorner", hueKnob).CornerRadius = UDim.new(1, 0)
+    local hkStroke = Instance.new("UIStroke", hueKnob)
+    hkStroke.Color = Color3.fromRGB(20, 22, 30); hkStroke.Thickness = 1
 
     local toolRow = Instance.new("Frame", c)
     toolRow.Size = UDim2.new(1, -24, 0, 28)
@@ -2725,17 +3350,24 @@ function M.F.MakePicker(parent, locKey, stateColorKey, order, cb)
     table.insert(M.Data.PaletteCallers, refreshSlotVisuals)
     refreshSlotVisuals()
 
-    local function setVisual(colorObj)
-        cH, cS, cV = colorObj:ToHSV()
+    -- keepHsv = true: цвет выбран самой палитрой, значит H/S/V уже известны, и пересчитывать их из цвета не нужно
+    -- (пересчёт округлял значения и сбрасывал оттенок у серых цветов).
+    local function setVisual(colorObj, keepHsv)
+        if not keepHsv then
+            local h, sat, val = colorObj:ToHSV()
+            cH = M.ColorMath.ResolveHue(cH, h, sat, val)
+            cS, cV = sat, val
+        end
         cv.BackgroundColor3 = Color3.fromHSV(cH, 1, 1)
         prevBox.BackgroundColor3 = colorObj
         pin.Position = UDim2.new(math.clamp(cS, 0, 1), 0, math.clamp(1 - cV, 0, 1), 0)
+        hueKnob.Position = UDim2.new(math.clamp(cH, 0, 1), 0, 0.5, 0)
         hexBox.Text = "#" .. colorObj:ToHex():upper()
     end
 
-    local function applyColor(col)
+    local function applyColor(col, keepHsv)
         M.State[stateColorKey] = col
-        setVisual(col)
+        setVisual(col, keepHsv)
         if cb then cb(col) end
     end
 
@@ -2782,15 +3414,17 @@ function M.F.MakePicker(parent, locKey, stateColorKey, order, cb)
         cS = math.clamp((pos.X - curPos.X) / curSz.X, 0, 1)
         cV = 1 - math.clamp((pos.Y - curPos.Y) / curSz.Y, 0, 1)
         pin.Position = UDim2.new(cS, 0, 1 - cV, 0)
-        applyColor(Color3.fromHSV(cH, cS, cV))
+        applyColor(Color3.fromHSV(cH, cS, cV), true)
     end
 
     local function updHue(pos)
         local curPos = hb.AbsolutePosition; local curSz = hb.AbsoluteSize
         if curSz.X == 0 then return end
         cH = math.clamp((pos.X - curPos.X) / curSz.X, 0, 1)
-        cv.BackgroundColor3 = Color3.fromHSV(cH, 1, 1)
-        applyColor(Color3.fromHSV(cH, cS, cV))
+        -- У белого/серого/чёрного цвета (туман и облака по умолчанию белые) оттенок не виден,
+        -- поэтому ползунок "не работал". Поднимаем насыщенность и яркость, чтобы цвет изменился.
+        cS, cV = M.ColorMath.PrepareForHueChange(cS, cV)
+        applyColor(Color3.fromHSV(cH, cS, cV), true)
     end
 
     cv.InputBegan:Connect(function(inp)
@@ -2848,6 +3482,68 @@ function M.F.MakeDropdown(parent, locKey, options, stateKey, order, cb)
     return c
 end
 
+-- Поле ввода текста. Серый текст-подсказка (PlaceholderText) виден, пока поле пустое,
+-- и показывает, в каком формате нужно писать.
+function M.F.MakeTextInput(parent, locKey, stateKey, placeholderKey, order, cb)
+    local c = M.F.MakeCard(parent, 84)
+    c.LayoutOrder = order
+    M.F.AttachTooltip(c, stateKey)
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -24, 0, 18)
+    label.Position = UDim2.new(0, 12, 0, 8)
+    label.BackgroundTransparency = 1
+    label.Text = M.Translate(locKey)
+    label.TextColor3 = Color3.fromRGB(235, 238, 248)
+    label.Font = Enum.Font.GothamMedium
+    label.TextSize = 13
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = c
+
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.new(1, -24, 0, 46)
+    box.Position = UDim2.new(0, 12, 0, 30)
+    box.BackgroundColor3 = Color3.fromRGB(15, 17, 24)
+    box.BorderSizePixel = 0
+    box.ClearTextOnFocus = false
+    box.TextWrapped = true
+    box.TextXAlignment = Enum.TextXAlignment.Left
+    box.TextYAlignment = Enum.TextYAlignment.Center
+    box.Font = Enum.Font.GothamMedium
+    box.TextSize = 12
+    box.TextColor3 = Color3.fromRGB(235, 238, 248)
+    box.PlaceholderText = M.Translate(placeholderKey)
+    box.PlaceholderColor3 = Color3.fromRGB(105, 114, 135)
+    box.Text = tostring(M.State[stateKey] or "")
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = box
+    local pad = Instance.new("UIPadding")
+    pad.PaddingLeft = UDim.new(0, 10)
+    pad.PaddingRight = UDim.new(0, 10)
+    pad.Parent = box
+    box.Parent = c
+
+    box.FocusLost:Connect(function()
+        local clean = string.match(box.Text, "^%s*(.-)%s*$") or ""
+        box.Text = clean
+        M.State[stateKey] = clean
+        cb(clean)
+    end)
+
+    table.insert(M.Data.RegUI, {
+        Key = stateKey,
+        SetVisual = function(val) box.Text = tostring(val) end,
+        SetLanguage = function()
+            label.Text = M.Translate(locKey)
+            box.PlaceholderText = M.Translate(placeholderKey)
+        end,
+        Callback = cb
+    })
+    return c, box
+end
+
 function M.F.UpdateLanguageUI()
     for _, item in ipairs(M.Data.RegUI) do if item.SetLanguage then item.SetLanguage() end end
 end
@@ -2857,11 +3553,24 @@ end
 -- ==============================================================================
 local CFG_FILE_PATH = "Matsysense_Configs.json"
 
+-- Эти значения живут только во время игры. Раньше они попадали в конфиг и ломали загрузку
+-- (например, MenuOpen/IsDead/Levitation восстанавливались из файла, а Orig* подменяли настоящие настройки игры).
+M.CFG.RuntimeKeys = {
+    Uptime = true, CurFPS = true, IsDead = true, IsUninjected = true,
+    MenuOpen = true, TabSwitching = true, Levitation = true
+}
+
+function M.CFG.IsRuntimeKey(k)
+    return M.CFG.RuntimeKeys[k] == true or string.sub(k, 1, 4) == "Orig"
+end
+
 M.CFG.GetExportData = function()
     local data = {}
     for k, v in pairs(M.State) do
         local t = typeof(v)
-        if t == "boolean" or t == "number" or t == "string" then
+        if M.CFG.IsRuntimeKey(k) then
+            -- пропускаем
+        elseif t == "boolean" or t == "number" or t == "string" then
             data[k] = v
         elseif t == "Color3" then
             data[k] = {__type = "Color3", hex = v:ToHex()}
@@ -2877,12 +3586,14 @@ M.CFG.GetExportData = function()
     return data
 end
 
-M.CFG.ApplyImportData = function(data)
+M.CFG.ApplyImportDataInner = function(data)
     if type(data) ~= "table" then return end
     for k, v in pairs(data) do
-        if M.State[k] ~= nil then
+        if M.State[k] ~= nil and not M.CFG.IsRuntimeKey(k) then
             if type(v) == "table" and v.__type == "Color3" and v.hex then
-                M.State[k] = Color3.fromHex(v.hex)
+                -- fromHex бросает ошибку на неправильной строке, поэтому pcall
+                local ok, color = pcall(Color3.fromHex, v.hex)
+                if ok then M.State[k] = color end
             elseif typeof(M.State[k]) == typeof(v) then
                 M.State[k] = v
             end
@@ -2955,7 +3666,17 @@ M.CFG.ApplyImportData = function(data)
     if M.State.OrbitOn then M.F.RebuildOrbits() end
     if M.State.HatOn then M.F.RebuildWireHat() end
     M.ClearGhosts()
+    -- Если во вкладке из конфига нет такой страницы, открываем Combat, а не оставляем пустое меню
+    if not M.State.Pages[M.State.ActiveTab] then M.State.ActiveTab = "Combat" end
     M.F.SwitchTab(M.State.ActiveTab)
+end
+
+-- Обёртка: флаг Importing нужен, чтобы колбэки (например, цвет тумана) не включали функции сами по себе
+M.CFG.ApplyImportData = function(data)
+    M.Data.Importing = true
+    local ok, err = pcall(M.CFG.ApplyImportDataInner, data)
+    M.Data.Importing = false
+    if not ok then warn("[Matsysense] Ошибка загрузки конфига: " .. tostring(err)) end
 end
 
 function M.CFG.FlushToFile()
@@ -3087,12 +3808,14 @@ M.F.MakeToggle(pExp, "AirVault", "AirVault", 8, function() end, true)
 M.F.MakeSection(pExp, "Sec_Defense", 9)
 M.F.MakeToggle(pExp, "PhaseCollision", "PhaseCollision", 10, M.F.SetNoclip, true)
 M.F.MakeToggle(pExp, "StateForce", "StateForce", 11, function() end, true)
-M.F.MakeToggle(pExp, "NetworkAlive", "NetworkAlive", 12, function() end, true)
+M.F.MakeToggle(pExp, "NetworkAlive", "NetworkAlive", 12, function(on) M.F.SetAntiAfk(on) end, true)
 
 -- Camera
 M.F.MakeSection(pCam, "Sec_CameraMain", 1)
 M.F.MakeSlider(pCam, "CamFov", "CamFov", 30, 120, "°", 2, function(v)
     M.State.CamFov = v
+    -- Принудительно держим FOV только если он отличается от FOV игры
+    M.Data.FovForced = math.abs(v - M.Data.OrigFov) > 0.5
     local cam = workspace.CurrentCamera
     if cam then cam.FieldOfView = v end
 end)
@@ -3135,7 +3858,7 @@ M.F.MakeSlider(pWrld, "FogDense", "FogDensity", 0.1, 1.0, "", 3, function() M.F.
 M.F.MakeSlider(pWrld, "FogHaze", "FogHaze", 0.0, 6.0, "", 4, function() M.F.ApplyFog() end)
 M.F.MakePicker(pWrld, "FogCol", "FogColor", 5, function(c)
     M.State.FogColor = c
-    if not M.State.FogOn then
+    if not M.Data.Importing and not M.State.FogOn then
         M.State.FogOn = true
         for _, el in ipairs(M.Data.RegUI) do
             if el.Key == "FogOn" and el.SetVisual then el.SetVisual(true) end
@@ -3159,37 +3882,65 @@ M.F.MakeToggle(pWrld, "DarkWorld", "DarkWorld", 8, function() M.F.ApplyDark() en
 M.F.MakeSlider(pWrld, "DarkIntense", "DarkIntensity", 0.05, 1, "", 9, function() M.F.ApplyDark() end)
 
 -- Clouds
-M.F.MakeSection(pWrld, "Sec_WorldClouds", 10)
-M.F.MakeToggle(pWrld, "CloudsOn", "CloudsOn", 11, function() M.F.ApplyClouds() end, false)
-M.F.MakeSlider(pWrld, "CloudDensity", "CloudDensity", 0.01, 1.0, "", 12, function() M.F.ApplyClouds() end)
-M.F.MakeSlider(pWrld, "CloudCover", "CloudCover", 0, 100, "%", 13, function() M.F.ApplyClouds() end)
-M.F.MakePicker(pWrld, "CloudColor", "CloudColor", 14, function(c)
+-- Custom Skybox
+M.F.MakeSection(pWrld, "Sec_WorldSky", 10)
+M.F.MakeToggle(pWrld, "SkyOn", "SkyOn", 11, function() M.F.ApplySky() end, false)
+M.F.MakeTextInput(pWrld, "SkyIds", "SkyIds", "SkyPlaceholder", 12, function() M.F.ApplySky() end)
+
+local skyStatusCard = M.F.MakeCard(pWrld, 40)
+skyStatusCard.LayoutOrder = 13
+M.UI.SkyStatusLabel = Instance.new("TextLabel")
+M.UI.SkyStatusLabel.Size = UDim2.new(1, -24, 1, 0)
+M.UI.SkyStatusLabel.Position = UDim2.new(0, 12, 0, 0)
+M.UI.SkyStatusLabel.BackgroundTransparency = 1
+M.UI.SkyStatusLabel.TextWrapped = true
+M.UI.SkyStatusLabel.Font = Enum.Font.GothamMedium
+M.UI.SkyStatusLabel.TextSize = 11
+M.UI.SkyStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+M.UI.SkyStatusLabel.Parent = skyStatusCard
+table.insert(M.Data.RegUI, {SetLanguage = M.F.RenderSkyStatus})
+M.F.SetSkyStatus("Sky_Idle", nil, "idle")
+
+M.F.MakeToggle(pWrld, "SkyHideBodies", "SkyHideBodies", 14, function() M.F.ApplySky(true) end, false)
+
+M.F.MakeSection(pWrld, "Sec_WorldClouds", 15)
+M.F.MakeToggle(pWrld, "CloudsOn", "CloudsOn", 16, function() M.F.ApplyClouds() end, false)
+M.F.MakeSlider(pWrld, "CloudDensity", "CloudDensity", 0.01, 1.0, "", 17, function() M.F.ApplyClouds() end)
+M.F.MakeSlider(pWrld, "CloudCover", "CloudCover", 0, 100, "%", 18, function() M.F.ApplyClouds() end)
+M.F.MakePicker(pWrld, "CloudColor", "CloudColor", 19, function(c)
     M.State.CloudColor = c
+    -- Раньше цвет менялся, но облака были выключены, и результата не было видно
+    if not M.Data.Importing and not M.State.CloudsOn then
+        M.State.CloudsOn = true
+        for _, el in ipairs(M.Data.RegUI) do
+            if el.Key == "CloudsOn" and el.SetVisual then el.SetVisual(true) end
+        end
+    end
     M.F.ApplyClouds()
 end)
 
 -- Weather
-M.F.MakeSection(pWrld, "Sec_WorldWeather", 15)
-M.F.MakeToggle(pWrld, "PropWeather", "WeatherOn", 16, function(on) if not on then M.F.ClearWeatherProps() end end, false)
-M.F.MakeDropdown(pWrld, "WeatherMode", {"Rain", "Snow"}, "WeatherMode", 17, function() M.F.ClearWeatherProps() end)
-M.F.MakeSlider(pWrld, "WeatherDense", "WeatherDensity", 10, 100, "", 18, function() end)
-M.F.MakeSlider(pWrld, "WeatherSpeed", "WeatherSpeed", 10, 140, "", 19, function() end)
-M.F.MakeSlider(pWrld, "WeatherRadius", "WeatherRadius", 20, 220, "studs", 20, function() M.F.ClearWeatherProps() end)
-M.F.MakeSlider(pWrld, "SnowSize", "SnowSize", 0.2, 2.5, "studs", 21, function() end)
-M.F.MakePicker(pWrld, "WeatherCol", "WeatherColor", 22, function() end)
+M.F.MakeSection(pWrld, "Sec_WorldWeather", 20)
+M.F.MakeToggle(pWrld, "PropWeather", "WeatherOn", 21, function(on) if not on then M.F.ClearWeatherProps() end end, false)
+M.F.MakeDropdown(pWrld, "WeatherMode", {"Rain", "Snow"}, "WeatherMode", 22, function() M.F.ClearWeatherProps() end)
+M.F.MakeSlider(pWrld, "WeatherDense", "WeatherDensity", 10, 100, "", 23, function() end)
+M.F.MakeSlider(pWrld, "WeatherSpeed", "WeatherSpeed", 10, 140, "", 24, function() end)
+M.F.MakeSlider(pWrld, "WeatherRadius", "WeatherRadius", 20, 220, "studs", 25, function() end)
+M.F.MakeSlider(pWrld, "SnowSize", "SnowSize", 0.2, 2.5, "studs", 26, function() end)
+M.F.MakePicker(pWrld, "WeatherCol", "WeatherColor", 27, function() end)
 
 -- World Effects
-M.F.MakeSection(pWrld, "Sec_WorldEffects", 23)
-M.F.MakeToggle(pWrld, "Lightning", "LightningOn", 24, function() end, false)
-M.F.MakeSlider(pWrld, "LightRate", "LightningRate", 1, 10, "x", 25, function() end)
-M.F.MakeSlider(pWrld, "LightSize", "LightningSize", 0.2, 2.5, "studs", 26, function() end)
-M.F.MakeSlider(pWrld, "LightDur", "LightningDuration", 0.1, 3.0, "с", 27, function() end)
-M.F.MakeToggle(pWrld, "Meteors", "MeteorOn", 28, function() end, false)
-M.F.MakeSlider(pWrld, "MetRate", "MeteorRate", 1, 10, "x", 29, function() end)
-M.F.MakeSlider(pWrld, "MetSize", "MeteorSize", 1, 8, "studs", 30, function() end)
-M.F.MakeSlider(pWrld, "MetTail", "MeteorTrailLen", 0.3, 3.5, "с", 31, function() end)
-M.F.MakeSlider(pWrld, "MetDur", "MeteorDuration", 0.5, 5.0, "с", 32, function() end)
-M.F.MakePicker(pWrld, "MetCol", "MeteorColor", 33, function() end)
+M.F.MakeSection(pWrld, "Sec_WorldEffects", 28)
+M.F.MakeToggle(pWrld, "Lightning", "LightningOn", 29, function() end, false)
+M.F.MakeSlider(pWrld, "LightRate", "LightningRate", 1, 10, "x", 30, function() end)
+M.F.MakeSlider(pWrld, "LightSize", "LightningSize", 0.2, 2.5, "studs", 31, function() end)
+M.F.MakeSlider(pWrld, "LightDur", "LightningDuration", 0.1, 3.0, "с", 32, function() end)
+M.F.MakeToggle(pWrld, "Meteors", "MeteorOn", 33, function() end, false)
+M.F.MakeSlider(pWrld, "MetRate", "MeteorRate", 1, 10, "x", 34, function() end)
+M.F.MakeSlider(pWrld, "MetSize", "MeteorSize", 1, 8, "studs", 35, function() end)
+M.F.MakeSlider(pWrld, "MetTail", "MeteorTrailLen", 0.3, 3.5, "с", 36, function() end)
+M.F.MakeSlider(pWrld, "MetDur", "MeteorDuration", 0.5, 5.0, "с", 37, function() end)
+M.F.MakePicker(pWrld, "MetCol", "MeteorColor", 38, function() end)
 
 -- Player
 M.F.MakeSection(pPlyr, "Sec_PlyrModel", 1)
@@ -3209,7 +3960,7 @@ M.F.MakeSlider(pPlyr, "JumpRingSpeed", "JumpRingSpeed", 0.3, 2.5, "с", 13, func
 
 M.F.MakeSection(pPlyr, "Sec_PlyrAccessories", 14)
 M.F.MakeToggle(pPlyr, "Orbits", "OrbitOn", 15, function() M.F.RebuildOrbits() end, false)
-M.F.MakeSlider(pPlyr, "OrbitCount", "OrbitCount", 1, 8, "", 16, function() M.F.RebuildOrbits() end)
+M.F.MakeSlider(pPlyr, "OrbitCount", "OrbitCount", 1, 8, "", 16, function() M.F.Debounce("orbits", 0.15, M.F.RebuildOrbits) end)
 M.F.MakeSlider(pPlyr, "OrbitRadius", "OrbitRadius", 3, 16, "studs", 17, function() end)
 M.F.MakeSlider(pPlyr, "OrbitSpeed", "OrbitSpeed", 0.5, 8, "x", 18, function() end)
 M.F.MakeSlider(pPlyr, "OrbitSize", "OrbitSize", 0.3, 3, "studs", 19, function(v) M.State.OrbitSize = v; M.F.UpdateOrbitsVisualLive() end)
@@ -3218,9 +3969,9 @@ M.F.MakeSlider(pPlyr, "OrbitTrailLen", "OrbitTrailLen", 0.2, 2.5, "с", 21, func
 M.F.MakePicker(pPlyr, "OrbitCol", "OrbitColor", 22, function() M.F.UpdateOrbitsVisualLive() end)
 M.F.MakePicker(pPlyr, "OrbitTrailCol", "OrbitTrailColor", 23, function() M.F.UpdateOrbitsVisualLive() end)
 M.F.MakeToggle(pPlyr, "WireHat", "HatOn", 24, function() M.F.RebuildWireHat() end, false)
-M.F.MakeSlider(pPlyr, "HatSize", "HatSize", 0.6, 2.4, "x", 25, function() M.F.RebuildWireHat() end)
-M.F.MakeSlider(pPlyr, "HatHeight", "HatHeight", 0.2, 2.0, "studs", 26, function() end)
-M.F.MakePicker(pPlyr, "HatCol", "HatColor", 27, function() M.F.RebuildWireHat() end)
+M.F.MakeSlider(pPlyr, "HatSize", "HatSize", 0.6, 2.4, "x", 25, function() M.F.Debounce("hat", 0.15, M.F.RebuildWireHat) end)
+M.F.MakeSlider(pPlyr, "HatHeight", "HatHeight", 0.2, 2.0, "studs", 26, function() M.F.Debounce("hat", 0.15, M.F.RebuildWireHat) end)
+M.F.MakePicker(pPlyr, "HatCol", "HatColor", 27, function() M.F.Debounce("hat", 0.15, M.F.RebuildWireHat) end)
 
 -- Misc
 M.F.MakeSection(pMisc, "Sec_SilhouetteMod", 1)
@@ -3257,7 +4008,7 @@ Instance.new("UICorner", cfgInput).CornerRadius = UDim.new(0, 6)
 
 local cfgStatusCard = M.F.MakeCard(pCfg, 28); cfgStatusCard.LayoutOrder = 2
 local cfgStatus = Instance.new("TextLabel", cfgStatusCard)
-cfgStatus.Size = UDim2.new(1, 0, 1, 0); cfgStatus.BackgroundTransparency = 1; cfgStatus.Text = "Studio Хранилище готово"
+cfgStatus.Size = UDim2.new(1, 0, 1, 0); cfgStatus.BackgroundTransparency = 1; cfgStatus.Text = (writefile and readfile and isfile) and "Хранилище: файл на диске" or "Хранилище: только память (в Studio файлы недоступны)"
 cfgStatus.TextColor3 = M.State.Accent; cfgStatus.Font = Enum.Font.GothamBold; cfgStatus.TextSize = 11
 
 local btnRow = M.F.MakeCard(pCfg, 38); btnRow.LayoutOrder = 3
@@ -3410,9 +4161,14 @@ M.F.MakePicker(pSet, "PillTextCol", "PillTextCol", 27, function(col) M.UI.PillTx
 -- ==============================================================================
 M.F.CloseMenu = function()
     M.State.MenuOpen = false
+    M.Data.MenuToken = M.Data.MenuToken + 1
+    local token = M.Data.MenuToken
     if M.UI.PrevCard.Visible then M.UI.PrevCard.Visible = false end
+    M.UI.Tooltip.Visible = false
     M.Services.T:Create(M.UI.MainScale, TweenInfo.new(M.State.AnimSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 0.85}):Play()
     task.delay(M.State.AnimSpeed, function()
+        -- Если за это время меню снова открыли, прятать его уже нельзя
+        if token ~= M.Data.MenuToken then return end
         M.UI.Main.Visible = false
         M.UI.MainScale.Scale = 1
     end)
@@ -3420,6 +4176,7 @@ end
 
 M.F.OpenMenu = function()
     M.State.MenuOpen = true
+    M.Data.MenuToken = M.Data.MenuToken + 1
     M.UI.Main.Visible = true
     M.UI.MainScale.Scale = 0.85
     M.Services.T:Create(M.UI.MainScale, TweenInfo.new(M.State.AnimSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 1}):Play()
@@ -3458,6 +4215,7 @@ M.F.Uninject = function()
     M.State.Esp = false; M.F.UpdateEsp()
     M.State.FogOn = false; M.F.ApplyFog()
     M.State.CloudsOn = false; M.F.ApplyClouds()
+    M.State.SkyOn = false; M.F.RestoreSky()
     M.State.DarkWorld = false; M.F.ApplyDark()
     M.State.TimeOn = false; M.Services.L.ClockTime = M.State.OrigTime
     M.State.WeatherOn = false; M.F.ClearWeatherProps()
@@ -3466,19 +4224,25 @@ M.F.Uninject = function()
     M.State.OrbitOn = false; for _, item in ipairs(M.State.OrbitObjs) do if item.Part then item.Part:Destroy() end end
     
     local cam = workspace.CurrentCamera
-    if cam then cam.FieldOfView = 70 end
-    
+    -- Возвращаем FOV, который был в игре (раньше всегда ставилось 70)
+    if cam and M.Data.FovForced then cam.FieldOfView = M.Data.OrigFov end
+
+    -- Раньше тут принудительно ставили WalkSpeed = 16 и CanCollide = true для всех деталей.
+    -- Это ломало игры с другой скоростью и превращало шапки в твёрдые объекты. Теперь возвращаем только своё.
+    M.State.ThirdPerson = false
+    M.F.UpdateThirdPerson(cam, nil, nil, false)
+    M.State.StateForce = false
+    M.F.UpdateStateForce()
+    M.State.HideHats = false
+    M.State.HoloSelf = false
+    M.UpdatePlayerVisuals()
+    M.State.NetworkAlive = false
+    M.F.SetAntiAfk(false)
+
     local char = M.LP and M.LP.Character
     if char then
-        local h = char:FindFirstChildOfClass("Humanoid")
-        if h then h.WalkSpeed = 16 end
-        
         for joint, origC0 in pairs(M.State.OrigC0Cache) do
             if joint and joint.Parent then joint.C0 = origC0 end
-        end
-
-        for _, it in ipairs(char:GetDescendants()) do
-            if it:IsA("BasePart") then it.CanCollide = true end
         end
     end
 
@@ -3562,3 +4326,142 @@ task.spawn(function()
     M.F.SwitchTab("Combat")
     M.F.OpenMenu()
 end)
+
+-- ==============================================================================
+-- [ МОДУЛЬНЫЕ ТЕСТЫ ]
+-- Включаются флагом RUN_SELF_TESTS в начале файла. Результат выводится в Output.
+-- ==============================================================================
+function M.RunSelfTests()
+    local passed, failed = 0, 0
+
+    local function test(name, fn)
+        local ok, err = pcall(fn)
+        if ok then
+            passed = passed + 1
+        else
+            failed = failed + 1
+            warn("[Matsysense tests] ПРОВАЛ: " .. name .. " -> " .. tostring(err))
+        end
+    end
+
+    local function expectEqual(actual, expected, label)
+        if actual ~= expected then
+            error((label or "значение") .. ": ожидалось " .. tostring(expected) .. ", получено " .. tostring(actual), 2)
+        end
+    end
+
+    local function expectNear(actual, expected, label)
+        if math.abs(actual - expected) > 1e-6 then
+            error((label or "значение") .. ": ожидалось " .. tostring(expected) .. ", получено " .. tostring(actual), 2)
+        end
+    end
+
+    -- ----- ColorMath.ResolveHue -----
+    test("ResolveHue: белый цвет сохраняет прежний оттенок", function()
+        expectNear(M.ColorMath.ResolveHue(0.6, 0, 0, 1), 0.6)
+    end)
+    test("ResolveHue: чёрный цвет сохраняет прежний оттенок", function()
+        expectNear(M.ColorMath.ResolveHue(0.6, 0, 1, 0), 0.6)
+    end)
+    test("ResolveHue: насыщенный цвет берёт новый оттенок", function()
+        expectNear(M.ColorMath.ResolveHue(0.6, 0.1, 0.8, 0.9), 0.1)
+    end)
+    test("ResolveHue: граница saturation = 0.001 считается серым", function()
+        expectNear(M.ColorMath.ResolveHue(0.6, 0.1, 0.001, 0.9), 0.6)
+    end)
+    test("ResolveHue: чуть выше границы считается цветным", function()
+        expectNear(M.ColorMath.ResolveHue(0.6, 0.1, 0.0011, 0.9), 0.1)
+    end)
+
+    -- ----- ColorMath.PrepareForHueChange -----
+    test("PrepareForHueChange: белый становится насыщенным", function()
+        local s2, v2 = M.ColorMath.PrepareForHueChange(0, 1)
+        expectNear(s2, 0.55, "saturation")
+        expectNear(v2, 1, "value")
+    end)
+    test("PrepareForHueChange: чёрный становится светлым", function()
+        local s2, v2 = M.ColorMath.PrepareForHueChange(1, 0)
+        expectNear(s2, 1, "saturation")
+        expectNear(v2, 1, "value")
+    end)
+    test("PrepareForHueChange: нормальный цвет не меняется", function()
+        local s2, v2 = M.ColorMath.PrepareForHueChange(0.8, 0.7)
+        expectNear(s2, 0.8, "saturation")
+        expectNear(v2, 0.7, "value")
+    end)
+    test("PrepareForHueChange: границы 0.05 и 0.15 не меняются", function()
+        local s2, v2 = M.ColorMath.PrepareForHueChange(0.05, 0.15)
+        expectNear(s2, 0.05, "saturation")
+        expectNear(v2, 0.15, "value")
+    end)
+    test("PrepareForHueChange: чуть ниже границ меняется", function()
+        local s2, v2 = M.ColorMath.PrepareForHueChange(0.049, 0.149)
+        expectNear(s2, 0.55, "saturation")
+        expectNear(v2, 1, "value")
+    end)
+    test("Сценарий: белый туман, сдвиг оттенка даёт видимый цвет", function()
+        local s2, v2 = M.ColorMath.PrepareForHueChange(0, 1)
+        expectEqual(s2 > 0.05 and v2 > 0.15, true, "цвет должен стать видимым")
+    end)
+
+    -- ----- ParseSkyIds -----
+    local function faces(text) return M.F.ParseSkyIds(text) end
+
+    test("ParseSkyIds: один ID идёт на все 6 граней", function()
+        local f, key = faces("123456789")
+        expectEqual(key, "Sky_Ok1", "ключ")
+        expectEqual(#f, 6, "граней")
+        for i = 1, 6 do expectEqual(f[i], "rbxassetid://123456789", "грань " .. i) end
+    end)
+    test("ParseSkyIds: принимает формат rbxassetid://", function()
+        local f = faces("rbxassetid://987654321")
+        expectEqual(f[1], "rbxassetid://987654321")
+    end)
+    test("ParseSkyIds: достаёт ID из ссылки магазина", function()
+        local f = faces("https://create.roblox.com/store/asset/132703927222924/Sky-Sunset-new?pagePosition=3")
+        expectEqual(f[1], "rbxassetid://132703927222924")
+    end)
+    test("ParseSkyIds: шесть ID сохраняют порядок", function()
+        local f, key = faces("11111, 22222, 33333, 44444, 55555, 66666")
+        expectEqual(key, "Sky_Ok6", "ключ")
+        expectEqual(f[1], "rbxassetid://11111", "Bk")
+        expectEqual(f[6], "rbxassetid://66666", "Up")
+    end)
+    test("ParseSkyIds: разделители пробел и точка с запятой", function()
+        local f = faces("11111 22222;33333,44444  55555 66666")
+        expectEqual(#f, 6, "граней")
+    end)
+    test("ParseSkyIds: не-ID даёт ошибку Sky_BadId", function()
+        local f, key, arg = faces("abc")
+        expectEqual(f, nil, "граней")
+        expectEqual(key, "Sky_BadId", "ключ")
+        expectEqual(arg, "abc", "аргумент")
+    end)
+    test("ParseSkyIds: слишком короткий ID", function()
+        local _, key = faces("1234")
+        expectEqual(key, "Sky_BadId")
+    end)
+    test("ParseSkyIds: слишком длинный ID (20 цифр)", function()
+        local _, key = faces("12345678901234567890")
+        expectEqual(key, "Sky_BadId")
+    end)
+    test("ParseSkyIds: три ID дают Sky_BadCount", function()
+        local f, key, arg = faces("11111, 22222, 33333")
+        expectEqual(f, nil, "граней")
+        expectEqual(key, "Sky_BadCount", "ключ")
+        expectEqual(arg, 3, "количество")
+    end)
+    test("ParseSkyIds: пустая строка и nil дают Sky_Idle", function()
+        local _, key1 = faces("")
+        local _, key2 = faces(nil)
+        expectEqual(key1, "Sky_Idle", "пустая строка")
+        expectEqual(key2, "Sky_Idle", "nil")
+    end)
+
+    print(string.format("[Matsysense tests] пройдено: %d, провалено: %d", passed, failed))
+    return failed == 0
+end
+
+if RUN_SELF_TESTS then
+    M.RunSelfTests()
+end
